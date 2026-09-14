@@ -1,0 +1,386 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  passwordHash  String
+  credits       Int      @default(0)
+  freeClipsUsed Int      @default(0)
+  plan          String?  // lite | creator | viral
+  planCycle     String?  // monthly | yearly
+  planRenewsAt  DateTime?
+  referralCode  String   @unique
+  referredById  String?
+  pixKey        String?
+  locale        String   @default("pt-BR")
+  theme         String   @default("dark")
+  streak        Int      @default(0)
+  lastCheckinAt DateTime?
+  surveyDoneAt  DateTime?
+  lastSpinAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  projects       Project[]
+  transactions   CreditTransaction[]
+  orders         Order[]
+  renders        Render[]
+  posts          ForumPost[]
+  comments       ForumComment[]
+  votes          ForumVote[]
+  missions       MissionCompletion[]
+  brandKits      BrandKit[]
+  templates      Template[]
+  files          LibraryFile[]
+  prompts        LibraryPrompt[]
+  socialAccounts SocialAccount[]
+  scheduledPosts ScheduledPost[]
+  launchers      Launcher[]
+  liveMonitors   LiveMonitor[]
+  entries        ChampionshipEntry[]
+  referralsMade  Referral[] @relation("Referrer")
+  referralsGot   Referral[] @relation("Referred")
+  apiTokens      ApiToken[]
+}
+
+model Project {
+  id              String   @id
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  url             String?
+  platform        String   @default("youtube") // youtube | upload | twitch | kick | drive | blank
+  videoId         String?
+  thumbnailUrl    String?
+  channelTitle    String?
+  durationSec     Float    @default(0)
+  language        String?
+  goal            String   @default("shorts") // shorts | reframe | blank
+  status          String   @default("queued") // queued|downloading|transcribing|analyzing|generating|ready|failed|expired
+  progress        Int      @default(0)
+  stage           String?
+  error           String?
+  clipDuration    String   @default("auto")
+  aspectRatio     String   @default("vertical")
+  layout          String   @default("auto")
+  captionTemplate String   @default("{}") // JSON
+  captionFont     String   @default("Montserrat")
+  emojisEnabled   Boolean  @default(false)
+  autoCta         Boolean  @default(false)
+  ignoreCaptions  Boolean  @default(false)
+  startTime       Float    @default(0)
+  endTime         Float    @default(0)
+  estimatedClips  Int      @default(0)
+  targetClips     Int      @default(3)
+  isFree          Boolean  @default(true)
+  creditsCharged  Int      @default(0)
+  expiresAt       DateTime?
+  sourcePath      String?
+  transcript      String?  // JSON words
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  shorts Short[]
+}
+
+model Short {
+  id              String   @id
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  slot            Int      @default(0)
+  title           String
+  reason          String?
+  hook            String?
+  score           Float    @default(0)
+  startTime       Float
+  endTime         Float
+  status          String   @default("pending") // pending|ready|rendering|rendered|failed
+  renderProgress  Int      @default(0)
+  layout          String   @default("single")
+  captionTemplate String?  // JSON override
+  captions        String?  // JSON word groups
+  thumbnailUrl    String?
+  previewUrl      String?
+  renderUrl       String?
+  renderedAt      DateTime?
+  watermark       Boolean  @default(true)
+  isInLauncher    Boolean  @default(false)
+  isScheduled     Boolean  @default(false)
+  isPublished     Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  renders        Render[]
+  scheduledPosts ScheduledPost[]
+  launcherItems  LauncherItem[]
+}
+
+model Render {
+  id          String    @id
+  shortId     String
+  short       Short     @relation(fields: [shortId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      String    @default("queued") // queued|processing|done|failed
+  progress    Int       @default(0)
+  filePath    String?
+  url         String?
+  resolution  String    @default("1080x1920")
+  durationSec Float     @default(0)
+  watermark   Boolean   @default(true)
+  error       String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+model CreditTransaction {
+  id          String   @id
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount      Int
+  type        String   // purchase|plan|referral|checkin|mission|survey|usage|refund|spin
+  description String
+  refId       String?
+  createdAt   DateTime @default(now())
+}
+
+model Order {
+  id          String    @id
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        String    // package | plan
+  planId      String?
+  cycle       String?
+  credits     Int       @default(0)
+  amountCents Int
+  method      String    // pix | card
+  status      String    @default("pending") // pending|paid|canceled
+  pixCode     String?
+  createdAt   DateTime  @default(now())
+  paidAt      DateTime?
+}
+
+model Referral {
+  id             String   @id
+  referrerId     String
+  referrer       User     @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredId     String   @unique
+  referred       User     @relation("Referred", fields: [referredId], references: [id], onDelete: Cascade)
+  status         String   @default("pending") // pending | purchased
+  creditsAwarded Int      @default(0)
+  createdAt      DateTime @default(now())
+}
+
+model ForumPost {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category  String   @default("geral")
+  title     String
+  content   String
+  upvotes   Int      @default(0)
+  createdAt DateTime @default(now())
+  comments  ForumComment[]
+  votes     ForumVote[]
+}
+
+model ForumComment {
+  id        String    @id
+  postId    String
+  post      ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime  @default(now())
+}
+
+model ForumVote {
+  id     String    @id
+  postId String
+  post   ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId String
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([postId, userId])
+}
+
+model Mission {
+  id          String @id
+  key         String @unique
+  title       String
+  description String
+  reward      Int
+  kind        String @default("once") // daily | once
+  sortOrder   Int    @default(0)
+  completions MissionCompletion[]
+}
+
+model MissionCompletion {
+  id          String   @id
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  missionId   String
+  mission     Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  dayKey      String   @default("")
+  completedAt DateTime @default(now())
+  @@unique([userId, missionId, dayKey])
+}
+
+model Championship {
+  id            String   @id
+  title         String
+  organizer     String
+  description   String
+  kind          String   // cpm | ranking
+  status        String   @default("active") // active | budget_exhausted | finished
+  startDate     DateTime
+  endDate       DateTime
+  prizeTotal    Int      // cents
+  ratePer1000   Int?     // cents
+  budgetUsedPct Float    @default(0)
+  bannerUrl     String?
+  minViews      Int      @default(100000)
+  createdAt     DateTime @default(now())
+  entries       ChampionshipEntry[]
+}
+
+model ChampionshipEntry {
+  id             String       @id
+  championshipId String
+  championship   Championship @relation(fields: [championshipId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoUrl       String
+  platform       String
+  category       String?
+  views          Int          @default(0)
+  createdAt      DateTime     @default(now())
+}
+
+model BrandKit {
+  id             String   @id
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  handle         String?
+  logoUrl        String?
+  primaryColor   String   @default("#7c3aed")
+  secondaryColor String   @default("#76FF03")
+  font           String   @default("Montserrat")
+  createdAt      DateTime @default(now())
+}
+
+model Template {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  config    String   // JSON caption/layout config
+  isPublic  Boolean  @default(false)
+  uses      Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model LibraryFile {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  folder    String   @default("")
+  path      String
+  url       String
+  size      Int      @default(0)
+  mime      String   @default("")
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model LibraryPrompt {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model SocialAccount {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform  String   // tiktok | instagram | youtube
+  handle    String
+  purpose   String   @default("publish") // publish | championship
+  createdAt DateTime @default(now())
+  scheduledPosts ScheduledPost[]
+}
+
+model ScheduledPost {
+  id              String        @id
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shortId         String?
+  short           Short?        @relation(fields: [shortId], references: [id], onDelete: SetNull)
+  socialAccountId String?
+  socialAccount   SocialAccount? @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+  platform        String
+  caption         String        @default("")
+  scheduledAt     DateTime
+  status          String        @default("scheduled") // scheduled | published | failed | canceled
+  createdAt       DateTime      @default(now())
+}
+
+model Launcher {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  platforms String   @default("[]") // JSON
+  times     String   @default("[]") // JSON ["09:00","18:00"]
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  items     LauncherItem[]
+}
+
+model LauncherItem {
+  id         String   @id
+  launcherId String
+  launcher   Launcher @relation(fields: [launcherId], references: [id], onDelete: Cascade)
+  shortId    String
+  short      Short    @relation(fields: [shortId], references: [id], onDelete: Cascade)
+  position   Int      @default(0)
+  status     String   @default("queued") // queued | scheduled | posted
+  postAt     DateTime?
+  createdAt  DateTime @default(now())
+}
+
+model LiveMonitor {
+  id         String   @id
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  channelUrl String
+  prompt     String   @default("")
+  minScore   Int      @default(7)
+  status     String   @default("idle") // idle | watching | live | stopped
+  clipsCount Int      @default(0)
+  createdAt  DateTime @default(now())
+}
+
+model ApiToken {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  token     String   @unique
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+}
