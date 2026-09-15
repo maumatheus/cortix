@@ -53,6 +53,10 @@ for (const lixo of [
   path.join(destinoApp, ".next", "standalone", "prisma", "dev.db"),
   path.join(destinoApp, ".next", "standalone", "prisma", "dev.db-journal"),
   path.join(destinoApp, ".next", "standalone", "storage"),
+  // o tracing do Next arrasta a saida de builds anteriores (1,2 GB) se elas existirem na raiz
+  path.join(destinoApp, ".next", "standalone", "dist"),
+  path.join(destinoApp, ".next", "standalone", "pacote"),
+  path.join(destinoApp, ".next", "standalone", ".git"),
 ]) {
   if (fs.existsSync(lixo)) {
     fs.rmSync(lixo, { recursive: true, force: true });
