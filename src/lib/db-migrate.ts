@@ -8,6 +8,8 @@ import { db } from "./db";
 const COLUNAS: Array<{ table: string; column: string; ddl: string }> = [
   { table: "Project", column: "effects", ddl: `ALTER TABLE "Project" ADD COLUMN "effects" TEXT NOT NULL DEFAULT '{}'` },
   { table: "Short", column: "effects", ddl: `ALTER TABLE "Short" ADD COLUMN "effects" TEXT` },
+  { table: "User", column: "licenseCheckedAt", ddl: `ALTER TABLE "User" ADD COLUMN "licenseCheckedAt" DATETIME` },
+  { table: "User", column: "licenseExpiresAt", ddl: `ALTER TABLE "User" ADD COLUMN "licenseExpiresAt" DATETIME` },
 ];
 
 export async function migrateSqlite() {
@@ -27,11 +29,13 @@ export async function migrateSqlite() {
 
 /**
  * Conta local do app desktop (admin / 12345), igual ao scripts/criar-admin.ts.
- * So roda com CORTIX_DESKTOP=1 (nunca no site publico) e SO cria: se a conta ja existe,
- * a senha atual e preservada.
+ * So existe em builds SEM servidor de licencas (desenvolvimento): com CORTIX_LICENSE_URL
+ * configurado, quem decide quem entra e o servidor. Nunca roda no site publico e SO cria:
+ * se a conta ja existe, a senha atual e preservada.
  */
 async function ensureDesktopAdmin() {
   if (process.env.CORTIX_DESKTOP !== "1") return;
+  if (process.env.CORTIX_LICENSE_URL) return;
   try {
     const existente = await db.user.findUnique({ where: { email: "admin" }, select: { id: true } });
     if (existente) return;

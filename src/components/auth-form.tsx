@@ -10,7 +10,8 @@ import { Button } from "./ui/button";
 import { Input, Label } from "./ui/input";
 import { Logo } from "./app-shell";
 
-export function AuthForm({ mode }: { mode: "login" | "register" }) {
+/** `desktop`: app instalado — login validado no servidor de licenças, sem auto-cadastro. */
+export function AuthForm({ mode, desktop = false }: { mode: "login" | "register"; desktop?: boolean }) {
   const router = useRouter();
   const sp = useSearchParams();
   const [name, setName] = useState("");
@@ -68,7 +69,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             </Button>
           </form>
           <p className="mt-5 text-center text-sm text-muted-foreground">
-            {mode === "login" ? (
+            {mode === "login" && desktop ? (
+              <>Acesso liberado pelo administrador do Cortix.</>
+            ) : mode === "login" ? (
               <>
                 Ainda não tem conta?{" "}
                 <Link href={`/register${ref ? `?ref=${ref}` : ""}`} className="font-semibold text-primary hover:underline">

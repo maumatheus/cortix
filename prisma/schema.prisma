@@ -26,6 +26,8 @@ model User {
   lastCheckinAt DateTime?
   surveyDoneAt  DateTime?
   lastSpinAt    DateTime?
+  licenseCheckedAt DateTime? // desktop: ultimo login validado no servidor de licencas
+  licenseExpiresAt DateTime? // desktop: validade da licenca (null = sem validade)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

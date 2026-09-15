@@ -82,6 +82,27 @@ function esperarServidor(tentativas = 120) {
   });
 }
 
+/** Identificador deste PC para o servidor de licencas (gerado uma vez por instalacao). */
+function idDispositivo() {
+  const arquivo = path.join(pastaDados(), "device.id");
+  try {
+    const atual = fs.readFileSync(arquivo, "utf8").trim();
+    if (atual.length >= 16) return atual;
+  } catch {}
+  const novo = require("node:crypto").randomUUID();
+  fs.writeFileSync(arquivo, novo, "utf8");
+  return novo;
+}
+
+/** Servidor de licencas (Supabase): URL + chave anon publica, gravados pelo preparar-pacote em licenca.json. */
+function configLicenca() {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(raizRecursos(), "licenca.json"), "utf8"));
+    if (j.url && j.anonKey) return { CORTIX_LICENSE_URL: j.url, CORTIX_LICENSE_ANON_KEY: j.anonKey };
+  } catch {}
+  return {};
+}
+
 /** Segredo dos tokens de login: gerado uma vez por instalacao (nao vai mais dentro do pacote). */
 function segredoJwt() {
   const arquivo = path.join(pastaDados(), "jwt.secret");
@@ -116,8 +137,12 @@ function subirServidor() {
     APP_URL: URL_BASE,
     JWT_SECRET: segredoJwt(),
     ALLOW_MOCK_PAYMENTS: "true",
-    // sinaliza ao servidor que esta no app desktop (conta admin local, migracoes do SQLite)
+    // sinaliza ao servidor que esta no app desktop (migracoes do SQLite, login online)
     CORTIX_DESKTOP: "1",
+    CORTIX_DEVICE_ID: idDispositivo(),
+    CORTIX_HOSTNAME: require("node:os").hostname(),
+    CORTIX_APP_VERSION: app.getVersion(),
+    ...configLicenca(),
     // binarios que vao junto no instalador; se nao existirem, cai no PATH do usuario
     FFMPEG_PATH: seExistir("ffmpeg.exe", process.env.FFMPEG_PATH),
     FFPROBE_PATH: seExistir("ffprobe.exe", process.env.FFPROBE_PATH),

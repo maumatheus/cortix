@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { newId, referralCode } from "@/lib/ids";
 import { createSession, hashPassword, publicUser } from "@/lib/auth";
 import { errorResponse, fail, ok, readJson } from "@/lib/api";
+import { licenseEnabled } from "@/lib/license";
 
 const schema = z.object({
   name: z.string().min(2, "Informe seu nome").max(80),
@@ -13,6 +14,7 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   try {
+    if (licenseEnabled()) return fail("No Cortix desktop as contas são criadas pelo administrador.", 403);
     const body = schema.parse(await readJson(req));
     const email = body.email.toLowerCase().trim();
     const exists = await db.user.findUnique({ where: { email } });

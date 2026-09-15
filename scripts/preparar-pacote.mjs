@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import os from "node:os";
 
 const raiz = process.cwd();
 const destino = path.join(raiz, "pacote");
@@ -108,14 +109,37 @@ if (faltando.length) {
 // 3) fontes das legendas ja baixadas entram junto, para nao baixar no primeiro uso
 copiar(path.join(raiz, "storage", "fonts"), path.join(destinoApp, "fontes"), "fontes das legendas");
 
-// 4) banco semente: schema atual + seed (missoes, conta equipe). Vira o cortix.db no primeiro uso.
+// 4) servidor de licencas: URL + chave anon (publica) do Supabase pessoal.
+//    Vem de CORTIX_LICENSE_URL / CORTIX_LICENSE_ANON_KEY ou de ~/.claude/credentials/gerencia21.env.
+{
+  const lerEnv = (arquivo) => {
+    const out = {};
+    try {
+      for (const l of fs.readFileSync(arquivo, "utf8").split(/\r?\n/)) {
+        const m = l.match(/^([A-Z0-9_]+)=(.*)$/);
+        if (m) out[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+      }
+    } catch {}
+    return out;
+  };
+  const cred = lerEnv(path.join(os.homedir(), ".claude", "credentials", "gerencia21.env"));
+  const url = process.env.CORTIX_LICENSE_URL || cred.SUPABASE_URL;
+  const anonKey = process.env.CORTIX_LICENSE_ANON_KEY || cred.SUPABASE_ANON_KEY_LEGACY || cred.SUPABASE_ANON_KEY;
+  if (url && anonKey) {
+    fs.writeFileSync(path.join(destinoApp, "licenca.json"), JSON.stringify({ url, anonKey }, null, 2));
+    console.log(`  ok servidor de licencas (${url})`);
+  } else {
+    console.log("  ATENCAO: sem CORTIX_LICENSE_URL/ANON_KEY — o app vai usar login LOCAL (admin/12345).");
+  }
+}
+
+// 5) banco semente: schema atual + seed (missoes, conta equipe). Vira o cortix.db no primeiro uso.
 const semente = path.join(destinoApp, "cortix-semente.db");
 const envSemente = { ...process.env, DATABASE_URL: "file:" + semente.replace(/\\/g, "/") };
 const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 for (const args of [
   ["prisma", "db", "push", "--skip-generate"],
   ["tsx", "prisma/seed.ts"],
-  ["tsx", "scripts/criar-admin.ts", "admin", "12345"], // conta local do app desktop
 ]) {
   const r = spawnSync(npx, args, { cwd: raiz, env: envSemente, stdio: "inherit", shell: process.platform === "win32" });
   if (r.status !== 0) {
