@@ -38,3 +38,34 @@ Crie uma conta em `/register`. Cada conta nova ganha 3 cortes grátis (com marca
 - Use Postgres e um storage externo (S3/R2) trocando `storageDir/storageUrl` em `src/lib/video/bin.ts`.
 - Rode o pipeline em um processo separado (a fila em memória é por instância).
 - Integre um gateway real (Stripe / PIX) no lugar do endpoint de confirmação simulada em `api/v1/orders/[id]/confirm`.
+
+## Efeitos de transformação (identidade própria do corte)
+
+Cada projeto (e cada corte, via override) tem um `EffectsConfig` (`src/lib/effects.ts`) aplicado no render pelo FFmpeg (`src/lib/video/effects.ts`):
+
+| Efeito | O que faz |
+|---|---|
+| `zoom` `pulse`/`punch` | Zoom dinâmico (respira suave ou corte seco alternado) via `zoompan` |
+| `grade` `warm`/`punchy`/`cinematic`/`cool` + `vignette` | Tratamento de cor e vinheta |
+| `progressBar` | Barra de progresso na base |
+| `handle` | `@canal` fixo no canto |
+| `hook` | Gancho visual nos 3 primeiros segundos (hook da IA ou título) |
+| `endCardText` | Cartão final ("Segue pra parte 2") nos últimos N segundos |
+| `speed` 1.00–1.10 | Velocidade com pitch preservado (`setpts` + `atempo`) |
+| `mirror` | Espelha horizontalmente (evite se houver texto na tela) |
+| `musicPath` + `musicVolume` | Trilha de fundo em loop mixada no áudio |
+
+Presets prontos: `none`, `viral`, `cinematic`, `monetize`, `stealth` (`EFFECT_PRESETS`). Na API:
+
+```jsonc
+// POST /api/v1/projects
+{ "url": "...", "clipDuration": "tiktok", "effects": { "preset": "monetize", "handle": "@seucanal" } }
+// POST /api/v1/shorts/:id/render — override só deste corte
+{ "effects": { "preset": "stealth", "endCardText": "Parte 2 no perfil" } }
+```
+
+`clipDuration: "tiktok"` força cortes com **61s+** (exigência do TikTok Creator Rewards), estendendo o fim até a próxima fronteira de frase.
+
+Teste rápido dos presets (gera um vídeo sintético e renderiza cada um em `storage/smoke/`): `npx tsx scripts/smoke-effects.ts`.
+
+> Esses efeitos atendem aos critérios de "transformação significativa" das políticas de monetização (YouTube conteúdo não original, TikTok originalidade). Eles não substituem direitos autorais: um Content ID match ainda pode reivindicar a receita de um vídeo específico.

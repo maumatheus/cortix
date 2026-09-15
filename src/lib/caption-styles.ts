@@ -70,6 +70,7 @@ export const CLIP_DURATIONS = [
   { id: "auto", label: "Automático", min: 20, max: 90 },
   { id: "30", label: "30 seg", min: 20, max: 40 },
   { id: "60", label: "1 min", min: 45, max: 75 },
+  { id: "tiktok", label: "TikTok Rewards (61s+)", min: 62, max: 95, strictMin: true },
   { id: "90", label: "1:30 min", min: 75, max: 105 },
   { id: "180", label: "3 min", min: 150, max: 210 },
   { id: "300", label: "5 min", min: 240, max: 360, pro: true },

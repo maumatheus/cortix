@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api, useUser } from "@/lib/hooks";
 import { cn, formatDuration } from "@/lib/utils";
 import { CAPTION_FONTS, CAPTION_STYLES, CLIP_DURATIONS, getCaptionStyle, type CaptionStyle } from "@/lib/caption-styles";
+import { EFFECT_PRESETS } from "@/lib/effects";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -40,6 +41,8 @@ function Wizard() {
   const [font, setFont] = useState(sp.get("font") || "Montserrat");
   const [emojis, setEmojis] = useState(false);
   const [autoCta, setAutoCta] = useState(false);
+  const [effectsPreset, setEffectsPreset] = useState("viral");
+  const [handle, setHandle] = useState("");
   const [useCredits, setUseCredits] = useState(false);
   const [creating, setCreating] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -132,6 +135,7 @@ function Wizard() {
           captionFont: font,
           emojisEnabled: emojis,
           autoCta,
+          effects: { preset: effectsPreset, handle: handle.trim() || null },
           ignoreCaptions: styleId === "none",
           startTime: start,
           endTime: end,
@@ -298,6 +302,31 @@ function Wizard() {
                     <label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
                       <Switch checked={autoCta} onCheckedChange={setAutoCta} /> 📣 Habilitar Gancho Visual
                     </label>
+                  </div>
+
+                  <p className="mt-8 text-sm text-muted-foreground">Efeitos de transformação</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Zoom, cor, barra de progresso, marca e velocidade dão identidade própria ao corte (o que as plataformas olham pra considerar conteúdo original).</p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {EFFECT_PRESETS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setEffectsPreset(p.id)}
+                        className={cn("rounded-xl border px-4 py-3 text-left transition", effectsPreset === p.id ? "border-primary bg-primary/10" : "hover:bg-secondary")}
+                      >
+                        <div className={cn("text-sm font-semibold", effectsPreset === p.id && "text-primary")}>{p.name}</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">{p.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3">
+                    <label className="text-xs text-muted-foreground">@ do canal (aparece fixo no corte)</label>
+                    <input
+                      value={handle}
+                      onChange={(e) => setHandle(e.target.value)}
+                      placeholder="@seucanal"
+                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                    />
                   </div>
                 </div>
               </div>

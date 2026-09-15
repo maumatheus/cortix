@@ -4,6 +4,8 @@ import { ffmpegBin, ffprobeBin, fontsDir, run } from "./bin";
 import { buildAss } from "./ass";
 import type { CaptionStyle } from "../caption-styles";
 import type { CaptionGroup } from "./transcript";
+import { hasAnyEffect, type EffectsConfig } from "../effects";
+import { buildAudioGraph, buildEffects } from "./effects";
 
 export interface ProbeInfo {
   width: number;
@@ -86,6 +88,9 @@ export interface RenderOptions {
   watermarkText?: string;
   hook?: string | null;
   captionsEnabled?: boolean;
+  /** Efeitos de transformação (zoom, cor, marca, velocidade, música). */
+  effects?: EffectsConfig | null;
+  primaryColor?: string;
   onProgress?: (pct: number) => void;
 }
 
@@ -95,8 +100,9 @@ export async function renderClip(o: RenderOptions) {
   const dur = Math.max(0.5, o.end - o.start);
   fs.mkdirSync(path.dirname(o.out), { recursive: true });
 
-  const filters: string[] = [layoutFilter(o.layout, W, H)];
   const fonts = fontsDir();
+  const fx = o.effects && hasAnyEffect(o.effects) ? buildEffects({ effects: o.effects, W, H, dur, fps: 30, fontsDir: fonts, primaryColor: o.primaryColor }) : null;
+  const filters: string[] = [layoutFilter(o.layout, W, H), ...(fx?.preCaption ?? [])];
   const captions = o.captionsEnabled !== false && o.style.highlightMode !== undefined && o.style.id !== "none";
   let assFile: string | null = null;
   if (captions || o.hook) {
@@ -120,7 +126,24 @@ export async function renderClip(o: RenderOptions) {
       `drawtext=${fontArg}text='${text}':fontsize=${Math.round(W * 0.045)}:fontcolor=white@0.55:borderw=2:bordercolor=black@0.4:x=w-tw-${Math.round(W * 0.04)}:y=h-th-${Math.round(H * 0.16)}`,
     );
   }
-  const graph = filters.join(",") + "[vout]";
+  if (fx) filters.push(...fx.postCaption, ...fx.timing);
+  let graph = filters.join(",") + "[vout]";
+  const outDur = fx?.outDur ?? dur;
+
+  // Áudio: só passa por filtro quando há velocidade ou trilha de fundo
+  const music = o.effects?.musicPath && fs.existsSync(o.effects.musicPath) ? o.effects.musicPath : null;
+  const needsAudioGraph = !!o.effects && (o.effects.speed !== 1 || !!music);
+  const extraInputs: string[] = [];
+  const audioMap: string[] = ["-map", "0:a?"];
+  if (needsAudioGraph && o.effects) {
+    const info = await probe(o.src);
+    if (music) extraInputs.push("-stream_loop", "-1", "-i", music);
+    const ag = buildAudioGraph(o.effects, info.hasAudio, music ? 1 : null);
+    if (ag) {
+      graph += ";" + ag;
+      audioMap.splice(0, audioMap.length, "-map", "[aout]");
+    }
+  }
 
   const args = [
     "-y",
@@ -133,12 +156,14 @@ export async function renderClip(o: RenderOptions) {
     dur.toFixed(3),
     "-i",
     o.src,
+    ...extraInputs,
     "-filter_complex",
     graph,
     "-map",
     "[vout]",
-    "-map",
-    "0:a?",
+    ...audioMap,
+    "-t",
+    (outDur + 0.05).toFixed(3),
     "-c:v",
     "libx264",
     "-preset",
@@ -164,7 +189,7 @@ export async function renderClip(o: RenderOptions) {
     onStdout: (line) => {
       const m = line.match(/out_time_ms=(\d+)/);
       if (m && o.onProgress) {
-        const pct = Math.min(99, Math.round((Number(m[1]) / 1_000_000 / dur) * 100));
+        const pct = Math.min(99, Math.round((Number(m[1]) / 1_000_000 / outDur) * 100));
         o.onProgress(pct);
       }
     },

@@ -6,6 +6,7 @@ import { ok, readJson, withUser } from "@/lib/api";
 import { chargeCredits, projectCost } from "@/lib/credits";
 import { FREE_CLIPS, FREE_PROJECT_EXPIRY_DAYS } from "@/lib/plans";
 import { getCaptionStyle } from "@/lib/caption-styles";
+import { resolveEffects } from "@/lib/effects";
 import { estimateClips, fetchMetadata } from "@/lib/video/ytdlp";
 import { enqueue } from "@/lib/video/queue";
 
@@ -22,6 +23,8 @@ const createSchema = z.object({
   emojisEnabled: z.boolean().default(false),
   autoCta: z.boolean().default(false),
   ignoreCaptions: z.boolean().default(false),
+  /** id de preset ("viral", "monetize"...) ou objeto parcial de EffectsConfig (aceita { preset, handle, ... }) */
+  effects: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
   startTime: z.number().min(0).default(0),
   endTime: z.number().min(0).optional(),
   useMyCredits: z.boolean().default(false),
@@ -111,6 +114,7 @@ export const POST = withUser(async ({ req, user }) => {
       emojisEnabled: body.emojisEnabled,
       autoCta: body.autoCta,
       ignoreCaptions: body.ignoreCaptions,
+      effects: JSON.stringify(resolveEffects(body.effects ?? "none")),
       startTime,
       endTime,
       estimatedClips: targetClips,

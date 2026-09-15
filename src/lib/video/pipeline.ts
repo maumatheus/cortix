@@ -10,9 +10,22 @@ import { groupWords, wordsInRange, type Word } from "./transcript";
 import { parseJson3 } from "./json3";
 import { selectHighlights } from "./highlights";
 import { makeThumbnail, makeVerticalThumbnail, probe, renderClip } from "./render";
+import { resolveEffects, type EffectsConfig } from "../effects";
 
 async function setProject(id: string, data: Record<string, unknown>) {
   await db.project.update({ where: { id }, data });
+}
+
+/** Efeitos do corte: override do short por cima do projeto. */
+function effectsFor(shortJson: string | null | undefined, projectJson: string | null | undefined): EffectsConfig {
+  const base = resolveEffects(projectJson || "{}");
+  return shortJson ? resolveEffects(shortJson, base) : base;
+}
+
+/** Gancho visual: quando o preset pede hook, usa o da IA ou cai no título. */
+function hookFor(effects: EffectsConfig, autoCta: boolean, hook: string | null, title: string) {
+  if (!effects.hook && !autoCta) return null;
+  return hook || title || null;
 }
 
 function styleFor(templateJson: string | null | undefined, projectJson: string): CaptionStyle {
@@ -96,6 +109,7 @@ export async function processProject(projectId: string) {
         count: fresh.targetClips,
         minDur: pref.min,
         maxDur: pref.max,
+        strictMin: "strictMin" in pref && !!pref.strictMin,
         language: fresh.language,
         videoTitle: fresh.title,
       });
@@ -138,6 +152,7 @@ export async function processProject(projectId: string) {
         await makeVerticalThumbnail(src, s.startTime + 1, thumb, s.layout, 360);
         const style = styleFor(s.captionTemplate, fresh.captionTemplate);
         const groups = JSON.parse(s.captions || "[]");
+        const effects = effectsFor(s.effects, fresh.effects);
         await renderClip({
           src,
           start: s.startTime,
@@ -150,8 +165,10 @@ export async function processProject(projectId: string) {
           crf: 28,
           preset: "veryfast",
           watermark: s.watermark,
-          hook: null,
+          hook: hookFor(effects, fresh.autoCta, s.hook, s.title),
           captionsEnabled: !fresh.ignoreCaptions,
+          effects,
+          primaryColor: style.highlightColor,
         });
         await db.short.update({ where: { id: s.id }, data: { status: "ready", thumbnailUrl: storageUrl(thumb), previewUrl: storageUrl(preview) } });
       } catch (e) {
@@ -187,6 +204,7 @@ export async function processRender(renderId: string) {
     const out = path.join(dir, `${short.id}-${render.id.slice(-6)}.mp4`);
     const style = styleFor(short.captionTemplate, project.captionTemplate);
     const groups = JSON.parse(short.captions || "[]");
+    const effects = effectsFor(short.effects, project.effects);
     let last = 0;
     await renderClip({
       src: project.sourcePath,
@@ -200,8 +218,10 @@ export async function processRender(renderId: string) {
       crf: 21,
       preset: "faster",
       watermark: render.watermark,
-      hook: short.hook && project.autoCta ? short.hook : null,
+      hook: hookFor(effects, project.autoCta, short.hook, short.title),
       captionsEnabled: !project.ignoreCaptions,
+      effects,
+      primaryColor: style.highlightColor,
       onProgress: (pct) => {
         if (pct - last >= 3) {
           last = pct;

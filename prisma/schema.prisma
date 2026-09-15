@@ -76,6 +76,7 @@ model Project {
   emojisEnabled   Boolean  @default(false)
   autoCta         Boolean  @default(false)
   ignoreCaptions  Boolean  @default(false)
+  effects         String   @default("{}") // JSON EffectsConfig (zoom, cor, marca, velocidade)
   startTime       Float    @default(0)
   endTime         Float    @default(0)
   estimatedClips  Int      @default(0)
@@ -107,6 +108,7 @@ model Short {
   layout          String   @default("single")
   captionTemplate String?  // JSON override
   captions        String?  // JSON word groups
+  effects         String?  // JSON override de efeitos para este corte
   thumbnailUrl    String?
   previewUrl      String?
   renderUrl       String?

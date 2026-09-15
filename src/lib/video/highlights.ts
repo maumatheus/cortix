@@ -19,6 +19,26 @@ export interface SelectOptions {
   maxDur: number;
   language?: string | null;
   videoTitle?: string;
+  /** Garante que nenhum corte fique abaixo de minDur (ex.: TikTok só paga vídeos >1 min). */
+  strictMin?: boolean;
+}
+
+/** Estende o fim de cada corte até a próxima fronteira de frase que satisfaça minDur; descarta o que não couber. */
+export function enforceMinDuration(clips: Highlight[], words: Word[], minDur: number, windowEnd: number): Highlight[] {
+  const sentences = toSentences(words);
+  const out: Highlight[] = [];
+  for (const c of [...clips].sort((a, b) => a.start - b.start)) {
+    let end = c.end;
+    if (end - c.start < minDur) {
+      const target = c.start + minDur;
+      const next = sentences.find((s) => s.end >= target && s.end <= windowEnd);
+      end = next ? next.end + 0.35 : Math.min(windowEnd, target + 0.5);
+    }
+    if (end - c.start < minDur - 0.5) continue;
+    if (out.some((p) => c.start < p.end && end > p.start)) continue;
+    out.push({ ...c, end: Number(end.toFixed(2)) });
+  }
+  return out.sort((a, b) => b.score - a.score);
 }
 
 const HOT_WORDS = [
@@ -182,14 +202,15 @@ ${transcript}`;
 }
 
 export async function selectHighlights(o: SelectOptions): Promise<{ clips: Highlight[]; engine: "ai" | "heuristic" }> {
+  const finish = (clips: Highlight[]) => (o.strictMin ? enforceMinDuration(clips, o.words, o.minDur, o.windowEnd) : clips);
   const key = process.env.ANTHROPIC_API_KEY;
   if (key && key.trim()) {
     try {
-      const clips = await aiSelect(o, key.trim());
+      const clips = finish(await aiSelect(o, key.trim()));
       if (clips.length) return { clips, engine: "ai" };
     } catch (e) {
       console.warn("[highlights] IA falhou, usando heurística:", (e as Error).message);
     }
   }
-  return { clips: heuristicSelect(o), engine: "heuristic" };
+  return { clips: finish(heuristicSelect(o)), engine: "heuristic" };
 }
