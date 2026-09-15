@@ -92,6 +92,7 @@ const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 for (const args of [
   ["prisma", "db", "push", "--skip-generate"],
   ["tsx", "prisma/seed.ts"],
+  ["tsx", "scripts/criar-admin.ts", "admin", "12345"], // conta local do app desktop
 ]) {
   const r = spawnSync(npx, args, { cwd: raiz, env: envSemente, stdio: "inherit", shell: process.platform === "win32" });
   if (r.status !== 0) {

@@ -22,4 +22,35 @@ export async function migrateSqlite() {
       console.error(`[db] migracao ${c.table}.${c.column} falhou:`, (e as Error).message);
     }
   }
+  await ensureDesktopAdmin();
+}
+
+/**
+ * Conta local do app desktop (admin / 12345), igual ao scripts/criar-admin.ts.
+ * So roda com CORTIX_DESKTOP=1 (nunca no site publico) e SO cria: se a conta ja existe,
+ * a senha atual e preservada.
+ */
+async function ensureDesktopAdmin() {
+  if (process.env.CORTIX_DESKTOP !== "1") return;
+  try {
+    const existente = await db.user.findUnique({ where: { email: "admin" }, select: { id: true } });
+    if (existente) return;
+    const [{ default: bcrypt }, { ulid }] = await Promise.all([import("bcryptjs"), import("ulid")]);
+    await db.user.create({
+      data: {
+        id: ulid(),
+        name: "Admin",
+        email: "admin",
+        passwordHash: await bcrypt.hash("12345", 10),
+        credits: 5000,
+        referralCode: `ADMIN${ulid().slice(-6)}`,
+        plan: "viral",
+        planCycle: "yearly",
+        planRenewsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      },
+    });
+    console.log("[db] conta local admin criada");
+  } catch (e) {
+    console.error("[db] nao foi possivel criar a conta admin:", (e as Error).message);
+  }
 }

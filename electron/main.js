@@ -116,6 +116,8 @@ function subirServidor() {
     APP_URL: URL_BASE,
     JWT_SECRET: segredoJwt(),
     ALLOW_MOCK_PAYMENTS: "true",
+    // sinaliza ao servidor que esta no app desktop (conta admin local, migracoes do SQLite)
+    CORTIX_DESKTOP: "1",
     // binarios que vao junto no instalador; se nao existirem, cai no PATH do usuario
     FFMPEG_PATH: seExistir("ffmpeg.exe", process.env.FFMPEG_PATH),
     FFPROBE_PATH: seExistir("ffprobe.exe", process.env.FFPROBE_PATH),
