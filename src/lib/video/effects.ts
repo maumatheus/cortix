@@ -71,7 +71,11 @@ export function buildEffects(i: EffectsBuildInput): EffectsBuild {
   const timing: string[] = [];
 
   if (e.mirror) pre.push("hflip");
-  if (e.zoom !== "none" && e.zoomAmount > 0) pre.push(zoomFilter(e, W, H, fps));
+  if (e.zoom !== "none" && e.zoomAmount > 0) {
+    // zoompan (d=1) gera 1 frame de saida por frame de ENTRADA e carimba a `fps` fixos: com fonte
+    // 60 fps o video passava a rodar na metade da velocidade e descolava do audio. Normaliza antes.
+    pre.push(`fps=${fps}`, zoomFilter(e, W, H, fps));
+  }
   pre.push(...gradeFilters(e.grade));
   if (e.vignette) pre.push("vignette=angle=PI/4.5");
 
