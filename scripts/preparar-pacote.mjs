@@ -71,11 +71,30 @@ const candidatos = {
   "ffprobe.exe": [process.env.FFPROBE_PATH, "C:/Users/rafas/tools/ffmpeg-9.0.1-essentials_build/bin/ffprobe.exe", `${instalado}/ffprobe.exe`],
   "yt-dlp.exe": [process.env.YTDLP_PATH, "C:/Users/rafas/tools/Python312/Scripts/yt-dlp.exe", `${instalado}/yt-dlp.exe`],
 };
+// Tamanho minimo de um binario de verdade. O "yt-dlp.exe" da pasta Scripts do Python e um
+// launcher de 100 KB que so funciona com aquele Python instalado — nunca pode ir no pacote.
+const MINIMO_MB = { "ffmpeg.exe": 20, "ffprobe.exe": 20, "yt-dlp.exe": 5 };
+const YTDLP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+const valido = (p, nome) => {
+  try {
+    return fs.existsSync(p) && fs.statSync(p).size / 1024 / 1024 >= (MINIMO_MB[nome] || 0);
+  } catch {
+    return false;
+  }
+};
 const faltando = [];
 for (const [nome, opcoes] of Object.entries(candidatos)) {
-  const achado = opcoes.filter(Boolean).find((p) => fs.existsSync(p));
+  let achado = opcoes.filter(Boolean).find((p) => valido(p, nome));
+  if (!achado && nome === "yt-dlp.exe") {
+    // baixa o binario standalone oficial (~18 MB) direto do GitHub
+    const alvo = path.join(destinoBin, nome);
+    console.log(`  baixando ${nome} de ${YTDLP_URL}...`);
+    const r = spawnSync("curl", ["-sL", "-o", alvo, YTDLP_URL], { stdio: "inherit" });
+    if (r.status === 0 && valido(alvo, nome)) achado = alvo;
+    else if (fs.existsSync(alvo)) fs.rmSync(alvo);
+  }
   if (achado) {
-    fs.copyFileSync(achado, path.join(destinoBin, nome));
+    if (achado !== path.join(destinoBin, nome)) fs.copyFileSync(achado, path.join(destinoBin, nome));
     const mb = (fs.statSync(achado).size / 1024 / 1024).toFixed(0);
     console.log(`  ok ${nome} (${mb} MB)`);
   } else {
