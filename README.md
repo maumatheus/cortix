@@ -80,3 +80,20 @@ npm run release   # idem, publicando no GitHub Releases (precisa GH_TOKEN) — o
 ```
 
 `scripts/preparar-pacote.mjs` procura ffmpeg/ffprobe/yt-dlp em `FFMPEG_PATH`/`FFPROBE_PATH`/`YTDLP_PATH`, depois nos caminhos conhecidos; gera o banco semente com `prisma db push` + seed; e remove `.env`, `dev.db` e `storage/` do pacote. Colunas novas no schema precisam entrar também em `src/lib/db-migrate.ts` — é ele que migra o SQLite dos apps já instalados na atualização.
+
+## Login online do app desktop (licenças)
+
+O app instalado roda 100% local; **só o login** consulta o servidor de licenças (Supabase pessoal, schema `cortix`, SQL em `supabase/001_cortix_licencas.sql`). Quem não foi liberado não entra. Após um login válido o app aceita a mesma senha por 3 dias sem internet.
+
+Ativado quando `resources/app/licenca.json` existe (URL + chave anon pública, gerado pelo `dist:prep` a partir de `CORTIX_LICENSE_URL`/`CORTIX_LICENSE_ANON_KEY` ou de `~/.claude/credentials/gerencia21.env`). Sem ele o app usa login local (`admin` / `12345`) — modo desenvolvimento. O site continua com o login local de sempre.
+
+Administração (usa a `service_role` local, nunca vai no app):
+
+```bash
+node scripts/cortix-liberar.mjs liberar  fulano@email.com senha123 --nome "Fulano" --plano viral --dias 30 --dispositivos 2
+node scripts/cortix-liberar.mjs bloquear fulano@email.com
+node scripts/cortix-liberar.mjs senha    fulano@email.com nova-senha
+node scripts/cortix-liberar.mjs listar
+node scripts/supabase-db.mjs 001_cortix_licencas.sql     # (re)aplica o schema
+npx tsx scripts/testar-licenca.ts fulano@email.com senha123   # testa o login sem abrir o app
+```

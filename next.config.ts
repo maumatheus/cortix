@@ -4,8 +4,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname),
-  // saida de empacotamentos anteriores nao pode entrar no standalone (1,2 GB por build)
-  outputFileTracingExcludes: { "*": ["./dist/**", "./pacote/**", "./storage/**", "./.git/**"] },
+  // (dist/ e pacote/ de builds anteriores sao removidos do standalone pelo scripts/preparar-pacote.mjs;
+  //  outputFileTracingExcludes com "*" esvaziava node_modules/next no standalone)
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   eslint: { ignoreDuringBuilds: true },
   serverExternalPackages: ["@prisma/client", "bcryptjs"],
