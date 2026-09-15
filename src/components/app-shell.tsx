@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -84,15 +85,25 @@ const TITLES: Record<string, string> = {
   "/settings": "Configurações",
 };
 
+/** Simbolo da marca (o "C" com o play). Use quando so couber o icone. */
+export function LogoMark({ className }: { className?: string }) {
+  return (
+    <Image
+      src="/marca/cortix-simbolo.png"
+      alt="Cortix"
+      width={270}
+      height={290}
+      priority
+      className={cn("size-8 w-auto object-contain", className)}
+    />
+  );
+}
+
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-2 font-semibold tracking-tight", className)}>
-      <span className="relative inline-flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-fuchsia-500 text-white shadow-[0_6px_20px_-6px_var(--primary)]">
-        <svg viewBox="0 0 24 24" className="size-4" fill="currentColor">
-          <path d="M6 4l12 8-12 8z" />
-        </svg>
-      </span>
-      <span className="text-lg">Cortix</span>
+      <LogoMark />
+      <span className="text-lg tracking-[0.02em]">Cortix</span>
     </span>
   );
 }

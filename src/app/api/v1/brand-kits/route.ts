@@ -8,7 +8,7 @@ const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Cor inválida (use o format
 const createSchema = z.object({
   name: z.string().trim().min(1, "Informe o nome do brand kit").max(80),
   handle: z.string().trim().max(60).optional().nullable(),
-  primaryColor: color.default("#7c3aed"),
+  primaryColor: color.default("#00d4ff"),
   secondaryColor: color.default("#76FF03"),
   font: z.string().trim().min(1).max(60).default("Montserrat"),
   logoUrl: z.string().max(500).optional().nullable(),

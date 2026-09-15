@@ -69,3 +69,14 @@ Presets prontos: `none`, `viral`, `cinematic`, `monetize`, `stealth` (`EFFECT_PR
 Teste rápido dos presets (gera um vídeo sintético e renderiza cada um em `storage/smoke/`): `npx tsx scripts/smoke-effects.ts`.
 
 > Esses efeitos atendem aos critérios de "transformação significativa" das políticas de monetização (YouTube conteúdo não original, TikTok originalidade). Eles não substituem direitos autorais: um Content ID match ainda pode reivindicar a receita de um vídeo específico.
+
+## App desktop (Windows, Electron)
+
+O mesmo servidor Next roda embutido num app Electron (`electron/main.js`): splash com a marca, checagem de atualização no GitHub Releases (`electron-updater`), servidor em `127.0.0.1:43110`, dados em `%APPDATA%\Cortix` (banco `cortix.db`, `storage/`, `jwt.secret` gerado por instalação).
+
+```bash
+npm run dist      # next build + monta pacote/ (standalone, ffmpeg/ffprobe/yt-dlp, fontes, banco semente) + instalador NSIS em dist/
+npm run release   # idem, publicando no GitHub Releases (precisa GH_TOKEN) — o app instalado se atualiza sozinho
+```
+
+`scripts/preparar-pacote.mjs` procura ffmpeg/ffprobe/yt-dlp em `FFMPEG_PATH`/`FFPROBE_PATH`/`YTDLP_PATH`, depois nos caminhos conhecidos; gera o banco semente com `prisma db push` + seed; e remove `.env`, `dev.db` e `storage/` do pacote. Colunas novas no schema precisam entrar também em `src/lib/db-migrate.ts` — é ele que migra o SQLite dos apps já instalados na atualização.

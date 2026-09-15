@@ -26,7 +26,7 @@ export function ChampionshipCard({ c }: { c: Championship }) {
 
   return (
     <div className={cn("group flex flex-col overflow-hidden rounded-2xl border bg-card transition hover:border-primary/50", !open && "opacity-90")}>
-      <Link href={href} className="relative block aspect-[16/7] overflow-hidden bg-gradient-to-br from-primary/50 via-fuchsia-600/25 to-card">
+      <Link href={href} className="relative block aspect-[16/7] overflow-hidden bg-gradient-to-br from-[color:var(--brand-from)]/45 via-[color:var(--brand-to)]/20 to-card">
         {c.bannerUrl ? <img src={c.bannerUrl} alt="" className="size-full object-cover transition group-hover:scale-105" /> : <Trophy className="absolute right-5 top-1/2 size-14 -translate-y-1/2 text-white/25" />}
         <div className="absolute left-3 top-3">
           <StatusBadge status={c.status} />

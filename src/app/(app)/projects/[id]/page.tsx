@@ -295,7 +295,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         </Page>
       </div>
 
-      <button onClick={() => setBulkOpen(true)} className="absolute right-0 top-24 z-10 flex flex-col items-center gap-2 rounded-l-2xl bg-gradient-to-b from-primary to-fuchsia-600 px-2 py-4 text-white shadow-xl" title="Edição em massa">
+      <button onClick={() => setBulkOpen(true)} className="absolute right-0 top-24 z-10 flex flex-col items-center gap-2 rounded-l-2xl brand-gradient px-2 py-4 text-[#04222c] shadow-xl" title="Edição em massa">
         <SquareCheck className="size-5" />
         <span className="font-mono text-[10px] font-bold uppercase tracking-widest [writing-mode:vertical-rl]">Edição em massa</span>
       </button>

@@ -9,7 +9,7 @@ export function TemplatePreview({ styleId, layout, font, className }: { styleId:
   const lay = LAYOUTS.find((l) => l.id === layout) ?? LAYOUTS[0];
   const words = ["Seu", "vídeo", "viral"];
   return (
-    <div className={cn("relative aspect-[9/16] w-full overflow-hidden rounded-xl border bg-[radial-gradient(circle_at_30%_20%,#2b1b4a,#0a0a0a_60%)]", className)}>
+    <div className={cn("relative aspect-[9/16] w-full overflow-hidden rounded-xl border bg-[radial-gradient(circle_at_30%_20%,#0d2733,#07090c_60%)]", className)}>
       <LayoutSkeleton layout={lay.id} />
       <div className={cn("absolute inset-x-2 flex justify-center text-center", style.position === "bottom" ? "bottom-[18%]" : style.position === "top" ? "top-[14%]" : "top-1/2 -translate-y-1/2")}>
         {style.id === "none" ? (

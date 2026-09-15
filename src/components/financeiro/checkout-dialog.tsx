@@ -186,7 +186,7 @@ export function CheckoutDialog({
               <DialogTitle>Checkout com cartão</DialogTitle>
               <DialogDescription>Total de {formatBRL(order.amountCents)}. Sem chave da Stripe configurada, o checkout é simulado.</DialogDescription>
             </DialogHeader>
-            <div className="rounded-2xl border bg-gradient-to-br from-primary/30 via-card to-fuchsia-500/20 p-5">
+            <div className="rounded-2xl border bg-gradient-to-br from-[color:var(--brand-from)]/25 via-card to-[color:var(--brand-to)]/20 p-5">
               <p className="eyebrow">Cartão de crédito</p>
               <p className="mt-6 font-mono text-lg tracking-[0.2em]">•••• •••• •••• 4242</p>
               <div className="mt-4 flex justify-between font-mono text-xs text-muted-foreground">

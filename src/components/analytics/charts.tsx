@@ -5,14 +5,14 @@ import { cn } from "@/lib/utils";
 
 /**
  * Gráficos de barras em CSS puro (sem libs).
- * Paleta validada (validate_palette.js): claro #7c3aed/#16a34a/#0284c7 · escuro #8b5cf6/#16a34a/#0284c7.
+ * Paleta da marca Cortix: claro #0096c7/#00a878/#5b6572 · escuro #00d4ff/#00ffa3/#8a929e.
  * Marcas finas (<= 24px), ponta arredondada 4px, base reta, gap de 2px na cor da superfície, grid hairline.
  */
 export function ChartStyles() {
   return (
     <style>{`
-      .viz { --s1:#7c3aed; --s2:#16a34a; --s3:#0284c7; --grid:#e5e5e5; --base:#c3c2b7; }
-      .dark .viz { --s1:#8b5cf6; --s2:#16a34a; --s3:#0284c7; --grid:#2c2c2a; --base:#383835; }
+      .viz { --s1:#0096c7; --s2:#00a878; --s3:#5b6572; --grid:#e3e8ec; --base:#b9c2c9; }
+      .dark .viz { --s1:#00d4ff; --s2:#00ffa3; --s3:#8a929e; --grid:#1a1f2c; --base:#2a313d; }
     `}</style>
   );
 }

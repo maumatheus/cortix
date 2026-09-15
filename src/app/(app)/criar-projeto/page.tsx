@@ -155,7 +155,7 @@ function Wizard() {
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col px-4 py-6 md:px-8">
       <div className="relative flex-1 overflow-hidden rounded-3xl border bg-card">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(ellipse_at_top,rgba(139,92,246,0.35),transparent_65%)]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(ellipse_at_top,rgba(0,212,255,0.28),transparent_65%)]" />
         <div className="scrollbar-thin relative h-full overflow-y-auto px-6 py-10 md:px-12">
           {step === 0 ? (
             <div className="mx-auto max-w-2xl text-center">

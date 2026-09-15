@@ -1,6 +1,6 @@
 {
   "name": "Cortix",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,7 +10,11 @@
     "seed": "tsx prisma/seed.ts",
     "fonts": "node scripts/fetch-fonts.mjs",
     "setup": "prisma generate && prisma db push && npm run seed && npm run fonts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "electron": "electron .",
+    "dist:prep": "node scripts/preparar-pacote.mjs",
+    "dist": "npm run build && npm run dist:prep && electron-builder --win --publish never",
+    "release": "npm run build && npm run dist:prep && electron-builder --win --publish always"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
@@ -32,6 +36,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "electron-updater": "^6.8.9",
     "jose": "^6.2.12",
     "lucide-react": "^1.46.0",
     "next": "15.5.25",
@@ -50,10 +55,80 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "15.5.25",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
     "typescript": "^5"
+  },
+  "main": "electron/main.js",
+  "productName": "Cortix",
+  "description": "Ideias, vídeos, resultados. Cortes automáticos com legendas dinâmicas.",
+  "author": {
+    "name": "Cortix",
+    "email": "contato@cortix.app"
+  },
+  "build": {
+    "appId": "app.cortix.desktop",
+    "productName": "Cortix",
+    "copyright": "Cortix",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "pacote/app",
+        "to": "app"
+      },
+      {
+        "from": "pacote/bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Cortix-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Cortix",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/installerSidebar.bmp",
+      "installerHeader": "build/installerHeader.bmp",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "maumatheus",
+        "repo": "cortix"
+      }
+    ]
   }
 }

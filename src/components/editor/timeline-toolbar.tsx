@@ -161,7 +161,7 @@ export function TimelineToolbar(p: TimelineToolbarProps) {
         </ToolButton>
       </Tip>
       <Tip label="BrainrotMAXXXING: preenche com brainrot todas as cenas que usam o layout Centro">
-        <ToolButton onClick={() => toast("Em breve", { description: "BrainrotMAXXXING chega em breve." })} className="font-black tracking-widest text-fuchsia-400 hover:text-fuchsia-300">
+        <ToolButton onClick={() => toast("Em breve", { description: "BrainrotMAXXXING chega em breve." })} className="font-black tracking-widest text-[color:var(--brand-to)] hover:brightness-110">
           XXX
         </ToolButton>
       </Tip>

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { run, ytdlpBin } from "./bin";
+import { ffmpegDir, run, ytdlpBin } from "./bin";
 
 export interface VideoMetadata {
   platform: "youtube" | "twitch" | "kick" | "drive" | "other";
@@ -99,12 +99,15 @@ export async function downloadVideo(url: string, outDir: string, onProgress?: (p
   const out = path.join(outDir, "source.mp4");
   if (fs.existsSync(out) && fs.statSync(out).size > 0) return out;
   const tmpl = path.join(outDir, "source.%(ext)s");
+  const ffdir = ffmpegDir();
   const r = await run(
     ytdlpBin(),
     [
       "--no-playlist",
       "--no-warnings",
       "--newline",
+      // sem --ffmpeg-location o yt-dlp nao junta video + audio quando o ffmpeg nao esta no PATH
+      ...(ffdir ? ["--ffmpeg-location", ffdir] : []),
       "-f",
       `bv*[height<=${maxHeight}][ext=mp4]+ba[ext=m4a]/b[height<=${maxHeight}][ext=mp4]/bv*[height<=${maxHeight}]+ba/b`,
       "--merge-output-format",
@@ -121,7 +124,13 @@ export async function downloadVideo(url: string, outDir: string, onProgress?: (p
     },
   );
   if (r.code !== 0 || !fs.existsSync(out)) {
-    const alt = fs.readdirSync(outDir).find((f) => f.startsWith("source.") && !f.endsWith(".part"));
+    // fallback: o merge pode nao ter acontecido. Pegue um arquivo COM video,
+    // nunca o .m4a de audio, senao o ffmpeg falha com "[0:v] matches no streams".
+    const sobras = fs
+      .readdirSync(outDir)
+      .filter((f) => f.startsWith("source.") && !f.endsWith(".part") && !/\.(m4a|mp3|opus|aac|wav|webm\.audio)$/i.test(f))
+      .sort((a, b) => fs.statSync(path.join(outDir, b)).size - fs.statSync(path.join(outDir, a)).size);
+    const alt = sobras[0];
     if (alt && r.code === 0) return path.join(outDir, alt);
     throw new Error("Falha ao baixar o vídeo: " + (r.stderr.split("\n").find((l) => /ERROR/.test(l)) || "erro desconhecido").slice(0, 300));
   }

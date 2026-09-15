@@ -44,3 +44,14 @@ next-env.d.ts
 # Cortix: dados locais (banco SQLite, downloads, renders, fontes baixadas)
 /prisma/dev.db*
 /storage/
+
+# Cortix: dados locais (banco SQLite, downloads, renders, fontes baixadas)
+/prisma/dev.db*
+/storage/
+
+# Electron / empacotamento
+pacote/
+dist/
+
+# icones e imagens do instalador (electron-builder)
+!/build/

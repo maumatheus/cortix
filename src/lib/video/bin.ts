@@ -50,6 +50,23 @@ export function ytdlpBin() {
   return (cache.ytdlp ??= resolveBin("YTDLP_PATH", "yt-dlp", "yt-dlp.yt-dlp"));
 }
 
+/**
+ * Pasta onde mora o ffmpeg, para passar em --ffmpeg-location do yt-dlp.
+ * Sem isso o yt-dlp nao consegue juntar video + audio quando o ffmpeg nao esta no PATH,
+ * e deixa dois arquivos separados (source.fNNN.mp4 e source.fNNN.m4a).
+ * Devolve null quando o ffmpeg vem do PATH (o yt-dlp acha sozinho).
+ */
+export function ffmpegDir(): string | null {
+  const bin = ffmpegBin();
+  if (!path.isAbsolute(bin)) return null;
+  try {
+    if (!fs.existsSync(bin)) return null;
+  } catch {
+    return null;
+  }
+  return path.dirname(bin);
+}
+
 export function storageDir(...sub: string[]) {
   const base = path.resolve(process.cwd(), process.env.STORAGE_DIR || "./storage");
   const full = path.join(base, ...sub);

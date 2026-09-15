@@ -109,7 +109,7 @@ export default function CampeonatoPage() {
       </Link>
 
       <div className="mt-4 overflow-hidden rounded-3xl border bg-card">
-        <div className="relative aspect-[16/5] min-h-36 bg-gradient-to-br from-primary/50 via-fuchsia-600/25 to-card">
+        <div className="relative aspect-[16/5] min-h-36 bg-gradient-to-br from-[color:var(--brand-from)]/45 via-[color:var(--brand-to)]/20 to-card">
           {c.bannerUrl ? <img src={c.bannerUrl} alt="" className="size-full object-cover" /> : <Trophy className="absolute right-8 top-1/2 size-20 -translate-y-1/2 text-white/20" />}
           <div className="absolute left-4 top-4 flex flex-wrap gap-2">
             <Badge variant={c.status === "active" ? "success" : c.status === "budget_exhausted" ? "warning" : "secondary"}>{statusLabel(c.status)}</Badge>

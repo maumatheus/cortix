@@ -23,7 +23,7 @@ export interface BrandKit {
 export function BrandKitDialog({ open, onOpenChange, kit, onSaved }: { open: boolean; onOpenChange: (v: boolean) => void; kit?: BrandKit | null; onSaved: () => void }) {
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
-  const [primary, setPrimary] = useState("#7c3aed");
+  const [primary, setPrimary] = useState("#00d4ff");
   const [secondary, setSecondary] = useState("#76FF03");
   const [font, setFont] = useState("Montserrat");
   const [file, setFile] = useState<File | null>(null);
@@ -35,7 +35,7 @@ export function BrandKitDialog({ open, onOpenChange, kit, onSaved }: { open: boo
     if (!open) return;
     setName(kit?.name ?? "");
     setHandle(kit?.handle ?? "");
-    setPrimary(kit?.primaryColor ?? "#7c3aed");
+    setPrimary(kit?.primaryColor ?? "#00d4ff");
     setSecondary(kit?.secondaryColor ?? "#76FF03");
     setFont(kit?.font ?? "Montserrat");
     setFile(null);

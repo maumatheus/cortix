@@ -79,6 +79,7 @@ export const CLIP_DURATIONS = [
 
 export const LAYOUTS = [
   { id: "single", name: "Single", description: "Recorte central em tela cheia", group: "sugeridos" },
+  { id: "single-clean", name: "Sem tarja", description: "Recorte central que descarta o letreiro do vídeo original", group: "sugeridos" },
   { id: "center", name: "Center", description: "Vídeo inteiro no centro com fundo desfocado", group: "sugeridos" },
   { id: "split", name: "Split", description: "Duas metades empilhadas", group: "sugeridos" },
   { id: "react", name: "React", description: "Vídeo no topo, câmera embaixo", group: "sugeridos" },

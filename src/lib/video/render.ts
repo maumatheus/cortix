@@ -66,6 +66,9 @@ export function layoutFilter(layout: string, W: number, H: number): string {
       return `[0:v]split=2[a][b];[a]crop=iw/2:ih:0:0,scale=${W / 2}:${H}:force_original_aspect_ratio=increase,crop=${W / 2}:${H}[al];[b]crop=iw/2:ih:iw/2:0,scale=${W / 2}:${H}:force_original_aspect_ratio=increase,crop=${W / 2}:${H}[br];[al][br]hstack,format=yuv420p`;
     case "tri-split":
       return `[0:v]split=3[a][b][c];[a]crop=iw/3:ih:0:0,scale=${W}:${Math.round(H / 3)}:force_original_aspect_ratio=increase,crop=${W}:${Math.round(H / 3)}[t1];[b]crop=iw/3:ih:iw/3:0,scale=${W}:${Math.round(H / 3)}:force_original_aspect_ratio=increase,crop=${W}:${Math.round(H / 3)}[t2];[c]crop=iw/3:ih:2*iw/3:0,scale=${W}:${H - 2 * Math.round(H / 3)}:force_original_aspect_ratio=increase,crop=${W}:${H - 2 * Math.round(H / 3)}[t3];[t1][t2][t3]vstack=inputs=3,format=yuv420p`;
+    case "single-clean":
+      // descarta a faixa de baixo (letreiro/legenda queimada do video original) e so entao corta 9:16
+      return `[0:v]crop=iw:ih*0.8:0:0,crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=${W}:${H},format=yuv420p`;
     case "single":
     default:
       return `[0:v]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=${W}:${H},format=yuv420p`;

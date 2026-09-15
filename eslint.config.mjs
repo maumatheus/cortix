@@ -18,6 +18,10 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // processo principal do Electron e CommonJS (require), fora do padrao do app Next
+      "electron/**",
+      "pacote/**",
+      "dist/**",
     ],
   },
 ];

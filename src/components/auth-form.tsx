@@ -37,7 +37,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,rgba(139,92,246,0.25),transparent_55%)] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,rgba(0,212,255,0.20),transparent_55%)] px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 flex justify-center">
           <Logo className="text-xl" />

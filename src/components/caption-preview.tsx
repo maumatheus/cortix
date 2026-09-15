@@ -9,7 +9,7 @@ export function CaptionPreview({ style, handle = "@seucanal", className, fontFam
   const words = ["Seu", "vídeo", "viral"];
   const ff = fontFamily || style.fontFamily;
   return (
-    <div className={cn("relative aspect-[9/16] w-full overflow-hidden rounded-2xl border bg-[radial-gradient(circle_at_30%_20%,#2b1b4a,#0a0a0a_60%)]", className)}>
+    <div className={cn("relative aspect-[9/16] w-full overflow-hidden rounded-2xl border bg-[radial-gradient(circle_at_30%_20%,#0d2733,#07090c_60%)]", className)}>
       <div className="absolute right-3 top-3 rounded-full border bg-black/50 px-2 py-1 text-[10px] font-semibold text-white/90">{ff}</div>
       <div className={cn("absolute inset-x-3 flex flex-col items-center justify-center text-center", style.position === "bottom" ? "bottom-[22%]" : style.position === "top" ? "top-[16%]" : "top-1/2 -translate-y-1/2")}>
         {style.id === "none" ? (
