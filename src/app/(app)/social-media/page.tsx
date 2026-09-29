@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PlatformDot, platformInfo } from "@/components/shared/platform";
-import { ConnectAccountDialog, startYoutubeOAuth, type SocialAccountItem } from "@/components/social/connect-account-dialog";
+import { ConnectAccountDialog, startUploadPostConnect, startYoutubeOAuth, type SocialAccountItem } from "@/components/social/connect-account-dialog";
 
 const SEEN_KEY = "cf_social_purpose_seen";
 
@@ -120,9 +120,9 @@ export default function SocialMediaPage() {
                   <p className="text-xs text-muted-foreground">
                     {platformInfo(a.platform).name} · conectada há {timeAgo(a.createdAt)}
                   </p>
-                  {a.connection === "oauth" ? (
+                  {a.connection === "oauth" || a.connection === "uploadpost" ? (
                     <p className="mt-1 flex items-center gap-1 text-[11px] text-success">
-                      <span className="size-1.5 rounded-full bg-success" /> Publicação real · {a.postsCount ?? 0} posts
+                      <span className="size-1.5 rounded-full bg-success" /> Publicação real{a.connection === "uploadpost" ? " (Upload-Post)" : ""} · {a.postsCount ?? 0} posts
                     </p>
                   ) : (
                     <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground" title="Na hora marcada o post só é marcado como publicado, nada sobe pra rede.">
@@ -138,7 +138,15 @@ export default function SocialMediaPage() {
                   >
                     <RefreshCw className="size-4" />
                   </button>
-                ) : null}
+                ) : (
+                  <button
+                    className="rounded-lg border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    title={a.connection === "uploadpost" ? "Reconectar no Upload-Post" : "Conectar de verdade via Upload-Post"}
+                    onClick={() => startUploadPostConnect(reload).catch((e) => toast.error((e as Error).message))}
+                  >
+                    <RefreshCw className="size-4" />
+                  </button>
+                )}
                 <button className="rounded-lg border p-2 text-destructive hover:bg-destructive/10" title="Desconectar" onClick={() => remove(a)}>
                   <Trash2 className="size-4" />
                 </button>

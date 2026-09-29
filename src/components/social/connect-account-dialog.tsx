@@ -15,9 +15,28 @@ export interface SocialAccountItem {
   platform: PlatformId;
   handle: string;
   purpose: "publish" | "championship";
-  connection?: "simulated" | "oauth";
+  connection?: "simulated" | "oauth" | "uploadpost";
   createdAt: string;
   postsCount?: number;
+}
+
+interface UploadPostIntegration {
+  configured: boolean;
+  fromEnv: boolean;
+  hint: string | null;
+}
+
+/** Abre a página do Upload-Post (navegador) e fica sincronizando as contas conectadas lá. */
+export async function startUploadPostConnect(onConnected: () => void) {
+  const { url } = await api<{ url: string }>("/api/v1/social-accounts/uploadpost/connect");
+  window.open(url, "_blank", "noopener");
+  toast.info("Conecte o TikTok/Instagram na página do Upload-Post. As contas aparecem aqui sozinhas.");
+  let n = 0;
+  const t = setInterval(async () => {
+    await api("/api/v1/social-accounts/uploadpost/sync", { method: "POST" }).catch(() => {});
+    onConnected();
+    if (++n >= 60) clearInterval(t); // ~5 min
+  }, 5000);
 }
 
 interface YoutubeIntegration {
@@ -47,14 +66,24 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
   const [cfgOpen, setCfgOpen] = useState(false);
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [up, setUp] = useState<UploadPostIntegration | null>(null);
+  const [upKey, setUpKey] = useState("");
+  const [upCfgOpen, setUpCfgOpen] = useState(false);
+  const [simulated, setSimulated] = useState(false);
   const oauth = purpose === "publish" && platform === "youtube";
+  const viaUploadPost = purpose === "publish" && platform !== "youtube" && !simulated;
 
   useEffect(() => {
     if (open) {
       setHandle("");
       setPlatform("youtube");
       setCfgOpen(false);
-      if (purpose === "publish") api<YoutubeIntegration>("/api/v1/integrations/youtube").then(setYt).catch(() => setYt(null));
+      setUpCfgOpen(false);
+      setSimulated(false);
+      if (purpose === "publish") {
+        api<YoutubeIntegration>("/api/v1/integrations/youtube").then(setYt).catch(() => setYt(null));
+        api<UploadPostIntegration>("/api/v1/integrations/uploadpost").then(setUp).catch(() => setUp(null));
+      }
     }
   }, [open, purpose]);
 
@@ -89,6 +118,33 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
     }
   }
 
+  async function saveUpKey() {
+    setLoading(true);
+    try {
+      await api("/api/v1/integrations/uploadpost", { method: "PUT", json: { apiKey: upKey.trim() } });
+      setUp(await api<UploadPostIntegration>("/api/v1/integrations/uploadpost"));
+      setUpCfgOpen(false);
+      setUpKey("");
+      toast.success("API key do Upload-Post salva");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function connectUploadPost() {
+    setLoading(true);
+    try {
+      await startUploadPostConnect(onConnected);
+      onOpenChange(false);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function connectGoogle() {
     setLoading(true);
     try {
@@ -102,6 +158,7 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
   }
 
   const showConfig = oauth && (cfgOpen || !yt?.configured);
+  const showUpConfig = viaUploadPost && (upCfgOpen || !up?.configured);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -123,7 +180,9 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
               ))}
             </div>
           </div>
-          {oauth ? (
+          {viaUploadPost ? (
+            <UploadPostBox up={up} showConfig={showUpConfig} onEditConfig={() => setUpCfgOpen(true)} apiKey={upKey} setApiKey={setUpKey} onSimulated={() => setSimulated(true)} />
+          ) : oauth ? (
             <YoutubeOAuthBox yt={yt} showConfig={showConfig} onEditConfig={() => setCfgOpen(true)} clientId={clientId} setClientId={setClientId} clientSecret={clientSecret} setClientSecret={setClientSecret} />
           ) : (
             <>
@@ -136,7 +195,7 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
                 <p>
                   {purpose === "publish" ? (
                     <>
-                      <span className="font-semibold text-foreground">Conexão simulada.</span> A publicação real no TikTok e no Instagram ainda não foi liberada. A conta é registrada pelo @ pra você organizar agendamentos e launchers; na hora marcada o post só é marcado como publicado.
+                      <span className="font-semibold text-foreground">Conexão simulada.</span> A conta é registrada só pelo @ pra você organizar agendamentos e launchers; na hora marcada o post é apenas marcado como publicado, nada sobe pra rede.
                     </>
                   ) : (
                     "A conta é registrada pelo @ para validar suas participações."
@@ -150,7 +209,17 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          {!oauth ? (
+          {viaUploadPost ? (
+            showUpConfig ? (
+              <Button onClick={saveUpKey} loading={loading} disabled={upKey.trim().length < 20}>
+                <KeyRound /> Salvar API key
+              </Button>
+            ) : (
+              <Button onClick={connectUploadPost} loading={loading} disabled={!up}>
+                <ExternalLink /> Conectar TikTok / Instagram
+              </Button>
+            )
+          ) : !oauth ? (
             <Button onClick={connect} loading={loading}>
               Conectar {PLATFORMS.find((p) => p.id === platform)?.name}
             </Button>
@@ -225,6 +294,58 @@ function YoutubeOAuthBox(p: {
         <Label>Client Secret</Label>
         <Input value={p.clientSecret} onChange={(e) => p.setClientSecret(e.target.value)} placeholder="GOCSPX-…" type="password" className="mt-1" />
       </div>
+    </div>
+  );
+}
+
+function UploadPostBox(p: { up: UploadPostIntegration | null; showConfig: boolean; onEditConfig: () => void; apiKey: string; setApiKey: (v: string) => void; onSimulated: () => void }) {
+  const { up } = p;
+  const simulatedLink = (
+    <button type="button" className="text-[11px] text-muted-foreground underline hover:text-foreground" onClick={p.onSimulated}>
+      Só registrar o @ (simulado, não publica)
+    </button>
+  );
+  if (!up) return <p className="text-xs text-muted-foreground">Carregando integração…</p>;
+  if (!p.showConfig) {
+    return (
+      <div className="space-y-2">
+        <div className="flex gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3 text-xs text-muted-foreground">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" />
+          <p>
+            <span className="font-semibold text-foreground">Publicação real via Upload-Post.</span> Abre a página deles no navegador: conecte o TikTok e/ou o Instagram lá e volte. Os cortes agendados sobem sozinhos na hora marcada (com o Cortix aberto).
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {!up.fromEnv ? (
+            <button type="button" className="text-[11px] text-muted-foreground underline hover:text-foreground" onClick={p.onEditConfig}>
+              Trocar API key ({up.hint})
+            </button>
+          ) : null}
+          {simulatedLink}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border px-4 py-3 text-xs text-muted-foreground">
+        <p className="font-semibold text-foreground">TikTok e Instagram via Upload-Post</p>
+        <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+          <li>
+            Crie a conta em{" "}
+            <a className="text-primary underline" href="https://app.upload-post.com" target="_blank" rel="noreferrer">
+              app.upload-post.com
+            </a>{" "}
+            (grátis: 10 envios/mês; ilimitado a partir de US$ 16/mês).
+          </li>
+          <li>Em API Keys, gere uma chave e cole abaixo.</li>
+        </ol>
+      </div>
+      <div>
+        <Label>API key</Label>
+        <Input value={p.apiKey} onChange={(e) => p.setApiKey(e.target.value)} placeholder="eyJhbGciOi…" type="password" className="mt-1" />
+      </div>
+      {simulatedLink}
     </div>
   );
 }

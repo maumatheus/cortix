@@ -1,10 +1,15 @@
 import fs from "node:fs";
 import { db } from "./db";
 import { uploadYoutubeVideo, youtubeAccessToken } from "./social/youtube";
+import { startUploadPost, uploadPostStatus } from "./social/uploadpost";
+
+/** Prefixo do externalId enquanto o envio assíncrono (Upload-Post) ainda está rolando lá. */
+export const PENDING_PREFIX = "req:";
 
 /**
  * Publicador: pega os posts cujo horário já passou e publica.
- * - Conta conectada por OAuth (hoje: YouTube) → upload de verdade pela API oficial.
+ * - Conta conectada por OAuth (YouTube) → upload de verdade pela API oficial.
+ * - Conta conectada via Upload-Post (TikTok/Instagram) → envio assíncrono; as rodadas seguintes consultam o status.
  * - Conta simulada / sem conta → só marca como publicado (comportamento antigo, sem falar com a rede).
  * Também dá baixa nos itens de launcher vencidos.
  */
@@ -20,13 +25,13 @@ async function rodada(userId?: string) {
   const now = new Date();
   const due = await db.scheduledPost.findMany({
     where: { status: "scheduled", scheduledAt: { lte: now }, ...(userId ? { userId } : {}) },
-    select: { id: true, shortId: true, platform: true, caption: true, socialAccount: { select: { id: true, connection: true, platform: true } } },
+    select: { id: true, shortId: true, platform: true, caption: true, socialAccount: { select: { id: true, connection: true, platform: true, externalId: true } } },
   });
 
   let published = 0;
   let failed = 0;
   for (const post of due) {
-    const real = post.socialAccount?.connection === "oauth";
+    const real = post.socialAccount?.connection === "oauth" || post.socialAccount?.connection === "uploadpost";
     if (!real) {
       await db.scheduledPost.update({ where: { id: post.id }, data: { status: "published", publishedAt: now } });
       if (post.shortId) await db.short.update({ where: { id: post.shortId }, data: { isPublished: true, isScheduled: false } }).catch(() => {});
@@ -38,14 +43,41 @@ async function rodada(userId?: string) {
     if (!lock.count) continue;
     try {
       const res = await publishReal(post);
-      await db.scheduledPost.update({ where: { id: post.id }, data: { status: "published", publishedAt: new Date(), externalId: res.id, externalUrl: res.url, error: null } });
-      if (post.shortId) await db.short.update({ where: { id: post.shortId }, data: { isPublished: true, isScheduled: false } }).catch(() => {});
+      if ("requestId" in res) {
+        // ainda subindo lá: fica em "publishing" até o status fechar
+        await db.scheduledPost.update({ where: { id: post.id }, data: { externalId: PENDING_PREFIX + res.requestId, error: null } });
+        continue;
+      }
+      await markPublished(post.id, post.shortId, res.id, res.url);
       published++;
     } catch (e) {
       const msg = (e as Error).message || "Erro desconhecido";
       console.error(`[publisher] post ${post.id} falhou:`, msg);
       await db.scheduledPost.update({ where: { id: post.id }, data: { status: "failed", error: msg.slice(0, 500) } });
       failed++;
+    }
+  }
+
+  // envios assíncronos em andamento
+  const pending = await db.scheduledPost.findMany({
+    where: { status: "publishing", externalId: { startsWith: PENDING_PREFIX }, ...(userId ? { userId } : {}) },
+    select: { id: true, shortId: true, platform: true, externalId: true, scheduledAt: true },
+  });
+  for (const p of pending) {
+    try {
+      const st = await uploadPostStatus(p.externalId!.slice(PENDING_PREFIX.length), p.platform);
+      if (st.state === "done") {
+        await markPublished(p.id, p.shortId, st.id, st.url);
+        published++;
+      } else if (st.state === "failed") {
+        await db.scheduledPost.update({ where: { id: p.id }, data: { status: "failed", error: st.error.slice(0, 500) } });
+        failed++;
+      } else if (Date.now() - p.scheduledAt.getTime() > 6 * 3600_000) {
+        await db.scheduledPost.update({ where: { id: p.id }, data: { status: "failed", error: "O Upload-Post não confirmou a publicação em 6 horas. Confira no painel deles." } });
+        failed++;
+      }
+    } catch (e) {
+      console.error(`[publisher] status do post ${p.id}:`, (e as Error).message); // tenta de novo na próxima rodada
     }
   }
 
@@ -60,13 +92,28 @@ async function rodada(userId?: string) {
   return { posts: published, failed, launcherItems: dueItems.length };
 }
 
-async function publishReal(post: { shortId: string | null; platform: string; caption: string; socialAccount: { id: string; platform: string } | null }) {
+async function markPublished(id: string, shortId: string | null, externalId: string | null, externalUrl: string | null) {
+  await db.scheduledPost.update({ where: { id }, data: { status: "published", publishedAt: new Date(), externalId, externalUrl, error: null } });
+  if (shortId) await db.short.update({ where: { id: shortId }, data: { isPublished: true, isScheduled: false } }).catch(() => {});
+}
+
+async function publishReal(post: {
+  shortId: string | null;
+  platform: string;
+  caption: string;
+  socialAccount: { id: string; platform: string; connection: string; externalId: string | null } | null;
+}): Promise<{ id: string | null; url: string | null } | { requestId: string }> {
   if (!post.shortId) throw new Error("Post sem corte vinculado");
   const short = await db.short.findUnique({ where: { id: post.shortId }, select: { title: true, hook: true } });
   if (!short) throw new Error("O corte deste post foi excluído");
   const render = await db.render.findFirst({ where: { shortId: post.shortId, status: "done", filePath: { not: null } }, orderBy: { completedAt: "desc" } });
   if (!render?.filePath || !fs.existsSync(render.filePath)) throw new Error("O corte ainda não foi renderizado (ou o arquivo do render sumiu). Renderize e reagende.");
 
+  if (post.socialAccount!.connection === "uploadpost") {
+    if (!post.socialAccount!.externalId) throw new Error("Conta sem perfil do Upload-Post. Reconecte a conta.");
+    const r = await startUploadPost({ profile: post.socialAccount!.externalId, platform: post.socialAccount!.platform, filePath: render.filePath, caption: post.caption, title: short.title });
+    return r.done ? { id: r.id, url: r.url } : { requestId: r.requestId };
+  }
   switch (post.socialAccount!.platform) {
     case "youtube": {
       const token = await youtubeAccessToken(post.socialAccount!.id);

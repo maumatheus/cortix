@@ -16,6 +16,7 @@ export interface YoutubeConfig {
 
 interface IntegrationsFile {
   youtube?: Partial<YoutubeConfig>;
+  uploadpost?: { apiKey?: string };
 }
 
 function file() {
@@ -45,6 +46,22 @@ export function saveYoutubeConfig(cfg: YoutubeConfig | null) {
   const atual = readFile();
   if (cfg) atual.youtube = cfg;
   else delete atual.youtube;
+  fs.writeFileSync(file(), JSON.stringify(atual, null, 2), "utf8");
+}
+
+/** Upload-Post (TikTok/Instagram sem app próprio nas redes): UPLOADPOST_API_KEY ou integrations.json. */
+export function uploadPostKey(): string | null {
+  return process.env.UPLOADPOST_API_KEY || readFile().uploadpost?.apiKey || null;
+}
+
+export function uploadPostKeyFromEnv() {
+  return !!process.env.UPLOADPOST_API_KEY;
+}
+
+export function saveUploadPostKey(apiKey: string | null) {
+  const atual = readFile();
+  if (apiKey) atual.uploadpost = { apiKey };
+  else delete atual.uploadpost;
   fs.writeFileSync(file(), JSON.stringify(atual, null, 2), "utf8");
 }
 
