@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { ffmpegBin, storageDir } from "./bin";
+import { ffmpegBin, run, storageDir } from "./bin";
 import { PAN_SEC, type ReframeData, type ReframeKey } from "./reframe-curve";
 
 /**
@@ -191,4 +191,43 @@ export async function analyzeReframe(src: string, start: number, end: number): P
   }
   if (!merged.length) merged.push({ t: start, x: 0.5, cut: true });
   return { v: 1, start, end, keys: merged, faces: withFaces };
+}
+
+/** Trocas de cena (segundos absolutos) num trecho curto, em baixa resolução. */
+export async function detectSceneCuts(src: string, start: number, end: number): Promise<number[]> {
+  const s = Math.max(0, start);
+  const args = ["-v", "info", "-hide_banner", "-ss", s.toFixed(3), "-t", Math.max(0.2, end - s).toFixed(3), "-i", src, "-an", "-vf", `scale=192:-2,select='gt(scene\,${SCENE_THRESHOLD})',showinfo`, "-f", "null", "-"];
+  const r = await run(ffmpegBin(), args);
+  if (r.code !== 0) return [];
+  return [...r.stderr.matchAll(/Parsed_showinfo.*pts_time:\s*([\d.]+)/g)].map((m) => s + Number(m[1]));
+}
+
+/**
+ * Encaixa início/fim do corte nas trocas de cena próximas pra não abrir/fechar com um "flash" do plano
+ * vizinho. Nunca corta palavra: o início só vai até antes da 1ª palavra e o fim só depois da última.
+ */
+export async function snapToScenes(src: string, clip: { start: number; end: number }, words: Array<{ start: number; end: number }>, limits: { min: number; max: number }) {
+  const inside = words.filter((w) => w.start >= clip.start - 0.05 && w.end <= clip.end + 0.05);
+  const firstWord = inside[0]?.start ?? clip.start;
+  const lastWord = inside[inside.length - 1]?.end ?? clip.end;
+  const [head, tail] = await Promise.all([detectSceneCuts(src, clip.start - 1.2, clip.start + 0.6), detectSceneCuts(src, clip.end - 0.6, clip.end + 1.0)]);
+  let start = clip.start;
+  let end = clip.end;
+  // início: troca logo depois (antes de alguém falar) → começa nela; senão, troca pouco antes → recua até ela
+  const after = head.filter((c) => c > start && c <= Math.min(start + 0.6, firstWord - 0.05));
+  // só recua/estica por cima de silêncio: puxar o fim da frase anterior estraga o gancho
+  const silent = (a: number, b: number) => !words.some((w) => w.end > a + 0.02 && w.start < b - 0.02);
+  const before = head.filter((c) => c < start && c >= start - 1.2 && silent(c, start));
+  if (after.length) start = after[after.length - 1];
+  else if (before.length) start = before[before.length - 1];
+  // fim: troca pouco antes (depois da última palavra) → termina nela; senão, troca logo depois → estica até ela
+  const early = tail.filter((c) => c < end && c >= Math.max(end - 0.6, lastWord + 0.05));
+  const late = tail.filter((c) => c > end && c <= end + 1.0 && silent(end, c));
+  if (early.length) end = early[0];
+  else if (late.length) end = late[0];
+  // cortes de cena bem no frame: recua 1 frame (30 fps) pra não pegar o 1º quadro do próximo plano
+  if (end !== clip.end) end -= 1 / 30;
+  const dur = end - start;
+  if (dur < limits.min || dur > limits.max) return clip;
+  return { start: Number(start.toFixed(3)), end: Number(end.toFixed(3)) };
 }

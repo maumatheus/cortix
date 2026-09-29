@@ -9,7 +9,7 @@ import { downloadSubtitles, downloadVideo, fetchMetadata } from "./ytdlp";
 import { groupWords, wordsInRange, type Word } from "./transcript";
 import { parseJson3 } from "./json3";
 import { replaceRange, transcribeWithWhisper, whisperDisabled } from "./whisper";
-import { analyzeReframe, TRACKED_LAYOUTS, type ReframeData } from "./reframe";
+import { analyzeReframe, snapToScenes, TRACKED_LAYOUTS, type ReframeData } from "./reframe";
 import { selectHighlights } from "./highlights";
 import { makeThumbnail, makeVerticalThumbnail, probe, renderClip } from "./render";
 import { resolveEffects, type EffectsConfig } from "../effects";
@@ -182,6 +182,16 @@ export async function processProject(projectId: string) {
           }
         }
         await setProject(projectId, { transcript: JSON.stringify(words) });
+      }
+      // início/fim encaixados nas trocas de cena (sem "flash" do plano vizinho)
+      await setProject(projectId, { stage: "Ajustando os cortes às cenas" }).catch(() => {});
+      const strict = "strictMin" in pref && !!pref.strictMin;
+      for (const c of clips) {
+        try {
+          Object.assign(c, await snapToScenes(src, c, words, { min: strict ? pref.min : 0, max: pref.max + 1.5 }));
+        } catch (e) {
+          console.error("[pipeline] ajuste de cena falhou:", (e as Error).message);
+        }
       }
       const style = styleFor(null, fresh.captionTemplate);
       let slot = 1;
