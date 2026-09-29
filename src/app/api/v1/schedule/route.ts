@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
 import { newId } from "@/lib/ids";
 import { publishDuePosts } from "@/lib/publisher";
-import { accountKey, validateAccountSchedule } from "@/lib/schedule-rules";
+import { accountKey, resolveChannel, validateAccountSchedule, validateChannelSchedule } from "@/lib/schedule-rules";
 
 const createSchema = z.object({
   shortId: z.string().optional().nullable(),
@@ -53,6 +53,10 @@ export const POST = withUser(async ({ req, user }) => {
     const short = await db.short.findFirst({ where: { id: body.shortId, project: { userId: user!.id } } });
     if (!short) return fail("Corte não encontrado", 404);
   }
+
+  // trava eleitoral / regras do canal
+  const blocked = validateChannelSchedule(resolveChannel(account?.channel, user!.channel), [when]);
+  if (blocked) return fail(blocked, 400, { rule: "channel-blackout" });
 
   // regras por conta: 3 posts / 24h e 2h de intervalo
   const key = accountKey(body.socialAccountId, body.platform);

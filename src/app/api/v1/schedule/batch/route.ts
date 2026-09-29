@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
 import { newId } from "@/lib/ids";
-import { buildBatchSlots, MAX_POSTS_PER_DAY, MIN_GAP_HOURS, validateAccountSchedule } from "@/lib/schedule-rules";
+import { buildBatchSlots, MAX_POSTS_PER_DAY, MIN_GAP_HOURS, resolveChannel, validateAccountSchedule, validateChannelSchedule } from "@/lib/schedule-rules";
 
 const schema = z.object({
   shortIds: z.array(z.string()).min(1, "Selecione pelo menos um corte").max(60),
@@ -19,8 +19,9 @@ export const POST = withUser(async ({ req, user }) => {
   const start = new Date(body.startAt);
   if (isNaN(start.getTime())) return fail("Data inválida", 422);
   if (start.getTime() < Date.now() - 60_000) return fail("Escolha um horário no futuro", 400);
+  let acc = null;
   if (body.socialAccountId) {
-    const acc = await db.socialAccount.findFirst({ where: { id: body.socialAccountId, userId: user!.id } });
+    acc = await db.socialAccount.findFirst({ where: { id: body.socialAccountId, userId: user!.id } });
     if (!acc) return fail("Conta não encontrada", 404);
     if (acc.platform !== body.platform) return fail("A conta escolhida não é da plataforma selecionada", 400);
   }
@@ -33,7 +34,7 @@ export const POST = withUser(async ({ req, user }) => {
     where: { userId: user!.id, status: { in: ["scheduled", "publishing", "published"] }, ...(body.socialAccountId ? { socialAccountId: body.socialAccountId } : { socialAccountId: null, platform: body.platform }) },
     select: { scheduledAt: true },
   });
-  const err = validateAccountSchedule(siblings.map((s) => s.scheduledAt), slots);
+  const err = validateChannelSchedule(resolveChannel(acc?.channel, user!.channel), slots) ?? validateAccountSchedule(siblings.map((s) => s.scheduledAt), slots);
   if (err) return fail(err, 400);
 
   const byId = new Map(shorts.map((s) => [s.id, s]));

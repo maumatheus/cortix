@@ -28,6 +28,7 @@ model User {
   lastSpinAt    DateTime?
   licenseCheckedAt DateTime? // desktop: ultimo login validado no servidor de licencas
   licenseExpiresAt DateTime? // desktop: validade da licenca (null = sem validade)
+  channel       String?  // canal do estúdio (ex.: politica) → regras em schedule-rules
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -324,6 +325,7 @@ model SocialAccount {
   platform  String   // tiktok | instagram | youtube
   handle    String
   purpose   String   @default("publish") // publish | championship
+  channel   String?  // canal do estúdio (ex.: politica); sem valor vale o do usuário
   connection     String    @default("simulated") // simulated | oauth
   externalId     String?   // id do canal/conta na rede
   accessToken    String?

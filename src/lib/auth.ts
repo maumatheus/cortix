@@ -87,6 +87,7 @@ export function publicUser(u: {
   streak: number;
   lastCheckinAt: Date | null;
   surveyDoneAt: Date | null;
+  channel?: string | null;
   createdAt: Date;
 }) {
   return {
@@ -107,6 +108,7 @@ export function publicUser(u: {
     streak: u.streak,
     lastCheckinAt: u.lastCheckinAt,
     surveyDone: !!u.surveyDoneAt,
+    channel: u.channel ?? null,
     createdAt: u.createdAt,
   };
 }

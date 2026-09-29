@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
-import { validateAccountSchedule } from "@/lib/schedule-rules";
+import { resolveChannel, validateAccountSchedule, validateChannelSchedule } from "@/lib/schedule-rules";
 
 const patchSchema = z.object({
   caption: z.string().max(2200).optional(),
@@ -31,8 +31,9 @@ export const PATCH = withUser(async ({ req, params, user }) => {
     if (isNaN(when.getTime())) return fail("Data inválida", 422);
     if (when.getTime() < Date.now() - 60_000) return fail("Escolha um horário no futuro", 400);
   }
+  let acc = null;
   if (socialAccountId) {
-    const acc = await db.socialAccount.findFirst({ where: { id: socialAccountId, userId: user!.id } });
+    acc = await db.socialAccount.findFirst({ where: { id: socialAccountId, userId: user!.id } });
     if (!acc) return fail("Conta não encontrada", 404);
     if (acc.platform !== platform) return fail("A conta escolhida não é da plataforma selecionada", 400);
   }
@@ -43,7 +44,7 @@ export const PATCH = withUser(async ({ req, params, user }) => {
       where: { userId: user!.id, id: { not: post.id }, status: { in: ["scheduled", "publishing", "published"] }, ...(socialAccountId ? { socialAccountId } : { socialAccountId: null, platform }) },
       select: { scheduledAt: true },
     });
-    const err = validateAccountSchedule(siblings.map((s) => s.scheduledAt), [when]);
+    const err = validateChannelSchedule(resolveChannel(acc?.channel, user!.channel), [when]) ?? validateAccountSchedule(siblings.map((s) => s.scheduledAt), [when]);
     if (err) return fail(err, 400);
   }
   const updated = await db.scheduledPost.update({

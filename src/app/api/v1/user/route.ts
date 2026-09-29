@@ -8,6 +8,7 @@ const schema = z.object({
   pixKey: z.string().max(120).nullable().optional(),
   theme: z.enum(["dark", "light"]).optional(),
   locale: z.enum(["pt-BR", "en"]).optional(),
+  channel: z.string().trim().toLowerCase().max(40).nullable().optional(),
   referralCode: z
     .string()
     .regex(/^[A-Z0-9]{4,12}$/i, "Use de 4 a 12 letras ou números")

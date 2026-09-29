@@ -11,6 +11,8 @@ const COLUNAS: Array<{ table: string; column: string; ddl: string }> = [
   { table: "Short", column: "reframe", ddl: `ALTER TABLE "Short" ADD COLUMN "reframe" TEXT` },
   { table: "User", column: "licenseCheckedAt", ddl: `ALTER TABLE "User" ADD COLUMN "licenseCheckedAt" DATETIME` },
   { table: "User", column: "licenseExpiresAt", ddl: `ALTER TABLE "User" ADD COLUMN "licenseExpiresAt" DATETIME` },
+  { table: "User", column: "channel", ddl: `ALTER TABLE "User" ADD COLUMN "channel" TEXT` },
+  { table: "SocialAccount", column: "channel", ddl: `ALTER TABLE "SocialAccount" ADD COLUMN "channel" TEXT` },
   { table: "SocialAccount", column: "connection", ddl: `ALTER TABLE "SocialAccount" ADD COLUMN "connection" TEXT NOT NULL DEFAULT 'simulated'` },
   { table: "SocialAccount", column: "externalId", ddl: `ALTER TABLE "SocialAccount" ADD COLUMN "externalId" TEXT` },
   { table: "SocialAccount", column: "accessToken", ddl: `ALTER TABLE "SocialAccount" ADD COLUMN "accessToken" TEXT` },

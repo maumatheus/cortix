@@ -52,3 +52,64 @@ export function buildBatchSlots(count: number, startAt: Date, intervalHours: num
   }
   return slots;
 }
+
+/**
+ * Regras por canal (trava eleitoral). O canal vem da conta conectada (SocialAccount.channel)
+ * ou, sem isso, do usuário (User.channel) — no estúdio é 1 usuário do Cortix por canal.
+ * Dentro de uma janela de bloqueio o canal não publica nem agenda; `boost: false` quer dizer
+ * que nada no Cortix pode acionar impulsionamento pago pra esse canal.
+ * Horários em America/Sao_Paulo (sem horário de verão desde 2019, então -03:00 fixo).
+ */
+export type ChannelRule = { aliases?: string[]; boost: boolean; blackouts: Array<{ inicio: string; fim: string; motivo: string }> };
+
+export const CHANNEL_RULES: Record<string, ChannelRule> = {
+  politica: {
+    aliases: ["missao-resumo"],
+    boost: false,
+    blackouts: [
+      { inicio: "2026-10-03T00:00:00-03:00", fim: "2026-10-04T20:00:00-03:00", motivo: "eleição, 1º turno" },
+      { inicio: "2026-10-24T00:00:00-03:00", fim: "2026-10-25T20:00:00-03:00", motivo: "eleição, 2º turno" },
+    ],
+  },
+};
+
+function norm(c: string | null | undefined) {
+  return (c ?? "").trim().toLowerCase();
+}
+
+/** Nome canônico do canal (resolve apelidos). A conta manda; sem canal na conta, vale o do usuário. */
+export function resolveChannel(accountChannel?: string | null, userChannel?: string | null): string | null {
+  const c = norm(accountChannel) || norm(userChannel);
+  if (!c) return null;
+  for (const [name, rule] of Object.entries(CHANNEL_RULES)) {
+    if (name === c || rule.aliases?.includes(c)) return name;
+  }
+  return c;
+}
+
+/** Janela de bloqueio que contém `when` para o canal, ou null. */
+export function channelBlackout(channel: string | null, when: Date) {
+  const rule = channel ? CHANNEL_RULES[resolveChannel(channel)!] : undefined;
+  if (!rule) return null;
+  const t = when.getTime();
+  return rule.blackouts.find((b) => t >= Date.parse(b.inicio) && t < Date.parse(b.fim)) ?? null;
+}
+
+/** Erro se algum horário cai numa janela de bloqueio do canal; null se está liberado. */
+export function validateChannelSchedule(channel: string | null, dates: Date[]): string | null {
+  for (const d of dates) {
+    const b = channelBlackout(channel, d);
+    if (b) return `Trava eleitoral: o canal "${resolveChannel(channel)}" não publica nem agenda entre ${fmtSp(b.inicio)} e ${fmtSp(b.fim)} (${b.motivo}). Escolha um horário a partir de ${fmtSp(b.fim)}.`;
+  }
+  return null;
+}
+
+/** Impulsionamento pago é permitido pra esse canal? Canal com regra e boost:false → nunca. */
+export function canBoost(channel: string | null): boolean {
+  const rule = channel ? CHANNEL_RULES[resolveChannel(channel)!] : undefined;
+  return rule ? rule.boost : true;
+}
+
+function fmtSp(iso: string) {
+  return new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}

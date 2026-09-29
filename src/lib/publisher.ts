@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { db } from "./db";
 import { uploadYoutubeVideo, youtubeAccessToken } from "./social/youtube";
 import { startUploadPost, uploadPostStatus } from "./social/uploadpost";
+import { channelBlackout, resolveChannel, validateChannelSchedule } from "./schedule-rules";
 
 /** Prefixo do externalId enquanto o envio assíncrono (Upload-Post) ainda está rolando lá. */
 export const PENDING_PREFIX = "req:";
@@ -15,22 +16,31 @@ export const PENDING_PREFIX = "req:";
  */
 let rodando: Promise<unknown> | null = null;
 
-export function publishDuePosts(userId?: string) {
+export function publishDuePosts(userId?: string, opts: { now?: Date } = {}) {
   // uma rodada por vez: GETs de página e o timer de fundo podem chamar juntos
-  if (!rodando) rodando = rodada(userId).finally(() => (rodando = null));
-  return rodando;
+  if (!rodando) rodando = rodada(userId, opts.now ?? new Date()).finally(() => (rodando = null));
+  return rodando as ReturnType<typeof rodada>;
 }
 
-async function rodada(userId?: string) {
-  const now = new Date();
+async function rodada(userId: string | undefined, now: Date) {
   const due = await db.scheduledPost.findMany({
     where: { status: "scheduled", scheduledAt: { lte: now }, ...(userId ? { userId } : {}) },
-    select: { id: true, shortId: true, platform: true, caption: true, socialAccount: { select: { id: true, connection: true, platform: true, externalId: true } } },
+    select: { id: true, shortId: true, platform: true, caption: true, user: { select: { channel: true } }, socialAccount: { select: { id: true, connection: true, platform: true, externalId: true, channel: true } } },
   });
 
   let published = 0;
   let failed = 0;
+  let blocked = 0;
   for (const post of due) {
+    // trava eleitoral: dentro da janela do canal nada sai, nem simulado; o post falha e precisa ser reagendado
+    const channel = resolveChannel(post.socialAccount?.channel, post.user.channel);
+    if (channelBlackout(channel, now)) {
+      const msg = validateChannelSchedule(channel, [now])!;
+      await db.scheduledPost.updateMany({ where: { id: post.id, status: "scheduled" }, data: { status: "failed", error: msg.slice(0, 500) } });
+      console.warn(`[publisher] post ${post.id} bloqueado: ${msg}`);
+      blocked++;
+      continue;
+    }
     const real = post.socialAccount?.connection === "oauth" || post.socialAccount?.connection === "uploadpost";
     if (!real) {
       await db.scheduledPost.update({ where: { id: post.id }, data: { status: "published", publishedAt: now } });
@@ -89,7 +99,7 @@ async function rodada(userId?: string) {
     await db.launcherItem.updateMany({ where: { id: { in: dueItems.map((i) => i.id) } }, data: { status: "posted" } });
     await db.short.updateMany({ where: { id: { in: dueItems.map((i) => i.shortId) } }, data: { isPublished: true } });
   }
-  return { posts: published, failed, launcherItems: dueItems.length };
+  return { posts: published, failed, blocked, launcherItems: dueItems.length };
 }
 
 async function markPublished(id: string, shortId: string | null, externalId: string | null, externalUrl: string | null) {

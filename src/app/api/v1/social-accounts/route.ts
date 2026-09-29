@@ -9,6 +9,7 @@ const createSchema = z.object({
   platform: z.enum(["tiktok", "instagram", "youtube"]),
   handle: z.string().trim().min(1, "Informe o @ da conta").max(80),
   purpose: z.enum(["publish", "championship"]).default("publish"),
+  channel: z.string().trim().toLowerCase().max(40).nullable().optional(),
 });
 
 export const GET = withUser(async ({ req, user }) => {
@@ -37,6 +38,6 @@ export const POST = withUser(async ({ req, user }) => {
   }
   const dup = await db.socialAccount.findFirst({ where: { userId: user!.id, platform: body.platform, handle, purpose: body.purpose } });
   if (dup) return fail("Essa conta já está conectada", 409);
-  const account = await db.socialAccount.create({ data: { id: newId(), userId: user!.id, platform: body.platform, handle, purpose: body.purpose } });
+  const account = await db.socialAccount.create({ data: { id: newId(), userId: user!.id, platform: body.platform, handle, purpose: body.purpose, channel: body.channel ?? null } });
   return ok({ account, simulated: true, message: "Conexão simulada: o OAuth real das redes não está disponível nesta versão." }, { status: 201 });
 });
