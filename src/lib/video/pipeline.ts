@@ -8,6 +8,7 @@ import { storageDir, storageUrl } from "./bin";
 import { downloadSubtitles, downloadVideo, fetchMetadata } from "./ytdlp";
 import { groupWords, wordsInRange, type Word } from "./transcript";
 import { parseJson3 } from "./json3";
+import { replaceRange, transcribeWithWhisper, whisperDisabled } from "./whisper";
 import { selectHighlights } from "./highlights";
 import { makeThumbnail, makeVerticalThumbnail, probe, renderClip } from "./render";
 import { resolveEffects, type EffectsConfig } from "../effects";
@@ -87,14 +88,39 @@ export async function processProject(projectId: string) {
     // 2. Transcrição
     await setProject(projectId, { status: "transcribing", stage: "Transcrevendo o áudio", progress: 44 });
     let words: Word[] = [];
+    let wordSource: "cache" | "subtitles" | "whisper" | "none" = fresh.transcript ? "cache" : "none";
     if (fresh.transcript) {
       words = JSON.parse(fresh.transcript);
     } else if (fresh.url && fresh.platform !== "upload") {
       const pref = fresh.language ? [fresh.language, "pt", "en"] : ["pt", "pt-BR", "en"];
       const subFile = await downloadSubtitles(fresh.url, dir, pref);
-      if (subFile) words = parseJson3(subFile);
-      await setProject(projectId, { transcript: JSON.stringify(words) });
+      if (subFile) {
+        words = parseJson3(subFile);
+        wordSource = "subtitles";
+      }
     }
+    // sem legenda (upload ou vídeo sem legenda): transcreve o trecho inteiro localmente
+    if (!fresh.transcript && !words.length && !whisperDisabled()) {
+      try {
+        let lastPct = -1;
+        words = await transcribeWithWhisper(src, {
+          start: windowStart,
+          end: windowEnd,
+          language: fresh.language,
+          workDir: dir,
+          onProgress: (stage, pct) => {
+            if (pct === lastPct) return;
+            lastPct = pct;
+            setProject(projectId, { stage: `${stage} · ${pct}%`, progress: 44 + Math.round(pct * 0.12) }).catch(() => {});
+          },
+        });
+        wordSource = "whisper";
+      } catch (e) {
+        // sem transcrição o projeto ainda sai (heurística, sem legenda), então não derruba
+        console.error("[pipeline] whisper falhou:", (e as Error).message);
+      }
+    }
+    if (!fresh.transcript) await setProject(projectId, { transcript: JSON.stringify(words) });
     await setProject(projectId, { progress: 56 });
 
     // 3. Seleção de momentos
@@ -114,6 +140,30 @@ export async function processProject(projectId: string) {
         videoTitle: fresh.title,
       });
       if (!clips.length) throw new Error("Não foi possível encontrar momentos neste trecho do vídeo.");
+      // legenda do YouTube só tem tempo por frase (as palavras são espalhadas por igual):
+      // retranscreve só os cortes escolhidos pra legenda palavra a palavra cair no tempo certo
+      if (wordSource === "subtitles" && !whisperDisabled()) {
+        let i = 0;
+        for (const c of clips) {
+          i++;
+          await setProject(projectId, { stage: `Sincronizando legendas ${i}/${clips.length}` }).catch(() => {});
+          try {
+            const fresh2 = await transcribeWithWhisper(src, {
+              start: Math.max(0, c.start - 0.3),
+              end: c.end + 0.3,
+              language: fresh.language,
+              workDir: dir,
+              // só mostra o download do modelo (1ª vez); a transcrição de um corte é rápida
+              onProgress: (stage, pct) => stage.startsWith("Baixando") && setProject(projectId, { stage: `${stage} · ${pct}%` }).catch(() => {}),
+            });
+            if (fresh2.length) words = replaceRange(words, c.start - 0.3, c.end + 0.3, fresh2);
+          } catch (e) {
+            console.error("[pipeline] sincronia whisper falhou, fica a legenda do YouTube:", (e as Error).message);
+            break;
+          }
+        }
+        await setProject(projectId, { transcript: JSON.stringify(words) });
+      }
       const style = styleFor(null, fresh.captionTemplate);
       let slot = 1;
       for (const c of clips) {
