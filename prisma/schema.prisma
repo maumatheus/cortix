@@ -323,6 +323,11 @@ model SocialAccount {
   platform  String   // tiktok | instagram | youtube
   handle    String
   purpose   String   @default("publish") // publish | championship
+  connection     String    @default("simulated") // simulated | oauth
+  externalId     String?   // id do canal/conta na rede
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
   createdAt DateTime @default(now())
   scheduledPosts ScheduledPost[]
 }
@@ -338,7 +343,11 @@ model ScheduledPost {
   platform        String
   caption         String        @default("")
   scheduledAt     DateTime
-  status          String        @default("scheduled") // scheduled | published | failed | canceled
+  status          String        @default("scheduled") // scheduled | publishing | published | failed | canceled
+  externalId      String?       // id do vídeo publicado na rede
+  externalUrl     String?
+  error           String?
+  publishedAt     DateTime?
   createdAt       DateTime      @default(now())
 }
 

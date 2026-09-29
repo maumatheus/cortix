@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowRight, Lock, Plus, Share2, Trophy, Trash2, Upload } from "lucide-react";
+import { ArrowRight, Lock, Plus, RefreshCw, Share2, Trophy, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { api, useFetch, useUser } from "@/lib/hooks";
 import { timeAgo } from "@/lib/utils";
@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PlatformDot, platformInfo } from "@/components/shared/platform";
-import { ConnectAccountDialog, type SocialAccountItem } from "@/components/social/connect-account-dialog";
+import { ConnectAccountDialog, startYoutubeOAuth, type SocialAccountItem } from "@/components/social/connect-account-dialog";
 
 const SEEN_KEY = "cf_social_purpose_seen";
 
@@ -120,10 +120,25 @@ export default function SocialMediaPage() {
                   <p className="text-xs text-muted-foreground">
                     {platformInfo(a.platform).name} · conectada há {timeAgo(a.createdAt)}
                   </p>
-                  <p className="mt-1 flex items-center gap-1 text-[11px] text-success">
-                    <span className="size-1.5 rounded-full bg-success" /> Ativa · {a.postsCount ?? 0} posts
-                  </p>
+                  {a.connection === "oauth" ? (
+                    <p className="mt-1 flex items-center gap-1 text-[11px] text-success">
+                      <span className="size-1.5 rounded-full bg-success" /> Publicação real · {a.postsCount ?? 0} posts
+                    </p>
+                  ) : (
+                    <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground" title="Na hora marcada o post só é marcado como publicado, nada sobe pra rede.">
+                      <span className="size-1.5 rounded-full bg-muted-foreground" /> Simulada · {a.postsCount ?? 0} posts
+                    </p>
+                  )}
                 </div>
+                {a.platform === "youtube" ? (
+                  <button
+                    className="rounded-lg border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    title={a.connection === "oauth" ? "Reconectar com Google" : "Conectar de verdade com Google"}
+                    onClick={() => startYoutubeOAuth(reload, true).catch((e) => toast.error((e as Error).message))}
+                  >
+                    <RefreshCw className="size-4" />
+                  </button>
+                ) : null}
                 <button className="rounded-lg border p-2 text-destructive hover:bg-destructive/10" title="Desconectar" onClick={() => remove(a)}>
                   <Trash2 className="size-4" />
                 </button>

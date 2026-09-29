@@ -57,7 +57,7 @@ export const POST = withUser(async ({ req, user }) => {
   // regras por conta: 3 posts / 24h e 2h de intervalo
   const key = accountKey(body.socialAccountId, body.platform);
   const siblings = await db.scheduledPost.findMany({
-    where: { userId: user!.id, status: { in: ["scheduled", "published"] }, ...(body.socialAccountId ? { socialAccountId: body.socialAccountId } : { socialAccountId: null, platform: body.platform }) },
+    where: { userId: user!.id, status: { in: ["scheduled", "publishing", "published"] }, ...(body.socialAccountId ? { socialAccountId: body.socialAccountId } : { socialAccountId: null, platform: body.platform }) },
     select: { scheduledAt: true },
   });
   const err = validateAccountSchedule(siblings.map((s) => s.scheduledAt), [when]);

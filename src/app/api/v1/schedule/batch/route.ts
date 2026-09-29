@@ -30,7 +30,7 @@ export const POST = withUser(async ({ req, user }) => {
 
   const slots = buildBatchSlots(uniqueIds.length, start, body.intervalHours, body.maxPerDay);
   const siblings = await db.scheduledPost.findMany({
-    where: { userId: user!.id, status: { in: ["scheduled", "published"] }, ...(body.socialAccountId ? { socialAccountId: body.socialAccountId } : { socialAccountId: null, platform: body.platform }) },
+    where: { userId: user!.id, status: { in: ["scheduled", "publishing", "published"] }, ...(body.socialAccountId ? { socialAccountId: body.socialAccountId } : { socialAccountId: null, platform: body.platform }) },
     select: { scheduledAt: true },
   });
   const err = validateAccountSchedule(siblings.map((s) => s.scheduledAt), slots);

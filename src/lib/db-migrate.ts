@@ -10,6 +10,15 @@ const COLUNAS: Array<{ table: string; column: string; ddl: string }> = [
   { table: "Short", column: "effects", ddl: `ALTER TABLE "Short" ADD COLUMN "effects" TEXT` },
   { table: "User", column: "licenseCheckedAt", ddl: `ALTER TABLE "User" ADD COLUMN "licenseCheckedAt" DATETIME` },
   { table: "User", column: "licenseExpiresAt", ddl: `ALTER TABLE "User" ADD COLUMN "licenseExpiresAt" DATETIME` },
+  { table: "SocialAccount", column: "connection", ddl: `ALTER TABLE "SocialAccount" ADD COLUMN "connection" TEXT NOT NULL DEFAULT 'simulated'` },
+  { table: "SocialAccount", column: "externalId", ddl: `ALTER TABLE "SocialAccount" ADD COLUMN "externalId" TEXT` },
+  { table: "SocialAccount", column: "accessToken", ddl: `ALTER TABLE "SocialAccount" ADD COLUMN "accessToken" TEXT` },
+  { table: "SocialAccount", column: "refreshToken", ddl: `ALTER TABLE "SocialAccount" ADD COLUMN "refreshToken" TEXT` },
+  { table: "SocialAccount", column: "tokenExpiresAt", ddl: `ALTER TABLE "SocialAccount" ADD COLUMN "tokenExpiresAt" DATETIME` },
+  { table: "ScheduledPost", column: "externalId", ddl: `ALTER TABLE "ScheduledPost" ADD COLUMN "externalId" TEXT` },
+  { table: "ScheduledPost", column: "externalUrl", ddl: `ALTER TABLE "ScheduledPost" ADD COLUMN "externalUrl" TEXT` },
+  { table: "ScheduledPost", column: "error", ddl: `ALTER TABLE "ScheduledPost" ADD COLUMN "error" TEXT` },
+  { table: "ScheduledPost", column: "publishedAt", ddl: `ALTER TABLE "ScheduledPost" ADD COLUMN "publishedAt" DATETIME` },
 ];
 
 export async function migrateSqlite() {

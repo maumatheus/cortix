@@ -18,7 +18,9 @@ export interface ScheduledPostItem {
   platform: PlatformId;
   caption: string;
   scheduledAt: string;
-  status: "scheduled" | "published" | "failed" | "canceled";
+  status: "scheduled" | "publishing" | "published" | "failed" | "canceled";
+  externalUrl?: string | null;
+  error?: string | null;
   createdAt: string;
   short: { id: string; title: string; thumbnailUrl: string | null; renderUrl: string | null; status: string; projectId: string; project: { title: string } } | null;
   socialAccount: { id: string; platform: string; handle: string } | null;

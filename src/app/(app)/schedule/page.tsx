@@ -18,6 +18,7 @@ import { BatchDialog, NewPostDialog, type ScheduledPostItem } from "@/components
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   scheduled: { label: "Agendado", cls: "text-sky-400" },
+  publishing: { label: "Enviando…", cls: "text-warning" },
   published: { label: "Publicado", cls: "text-success" },
   failed: { label: "Falhou", cls: "text-destructive" },
   canceled: { label: "Cancelado", cls: "text-muted-foreground" },
@@ -249,6 +250,12 @@ function ScheduleInner() {
                     {platformInfo(detail.platform).name} · {detail.socialAccount?.handle ?? "sem conta vinculada"}
                   </p>
                   <p className="mt-2 whitespace-pre-wrap text-xs">{detail.caption || <span className="text-muted-foreground">Sem legenda</span>}</p>
+                  {detail.externalUrl ? (
+                    <a href={detail.externalUrl} target="_blank" rel="noreferrer" className="mt-2 block text-xs font-semibold text-success hover:underline">
+                      Ver publicação ↗
+                    </a>
+                  ) : null}
+                  {detail.status === "failed" && detail.error ? <p className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs text-destructive">{detail.error}</p> : null}
                   {detail.short ? (
                     <Link href={`/projects/${detail.short.projectId}`} className="mt-2 inline-block text-xs text-primary hover:underline">
                       Abrir projeto {detail.short.project.title} ↗
@@ -260,7 +267,7 @@ function ScheduleInner() {
                 <Button variant="outline" size="sm" onClick={() => remove(detail)}>
                   <Trash2 /> Excluir
                 </Button>
-                {detail.status !== "published" ? (
+                {detail.status !== "published" && detail.status !== "publishing" ? (
                   <>
                     <Button variant="secondary" size="sm" onClick={() => cancel(detail)}>
                       <XCircle /> {detail.status === "canceled" ? "Reativar" : "Cancelar"}
