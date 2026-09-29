@@ -50,6 +50,12 @@ export async function createScheduledPost(user: { id: string; channel?: string |
   }
   const metaErr = checkPostMeta(body.meta);
   if (metaErr) throw new ScheduleError(metaErr, 422);
+  if (body.meta?.carousel) {
+    if (body.platform === "youtube") throw new ScheduleError("Carrossel só no Instagram ou no TikTok", 422);
+    if (account && account.connection !== "uploadpost") throw new ScheduleError("Carrossel só sai por conta conectada via Upload-Post", 422);
+  } else if (account && account.connection !== "simulated" && !body.shortId && !body.meta?.videoPath) {
+    throw new ScheduleError("Informe o corte (shortId), um vídeo local (meta.videoPath) ou um carrossel (meta.carousel)", 422);
+  }
 
   // trava eleitoral / regras do canal
   const blocked = validateChannelSchedule(resolveChannel(account?.channel, user.channel), [when]);

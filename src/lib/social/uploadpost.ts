@@ -1,5 +1,7 @@
 import fs from "node:fs";
+import path from "node:path";
 import { db } from "@/lib/db";
+import { youtubeTexts, type YoutubeMeta } from "@/lib/post-meta";
 import { newId } from "@/lib/ids";
 import { uploadPostKey } from "./config";
 
@@ -10,7 +12,10 @@ import { uploadPostKey } from "./config";
  */
 
 const API = process.env.UPLOADPOST_API_URL || "https://api.upload-post.com/api"; // env só pra testes
-export const UPLOADPOST_PLATFORMS = ["tiktok", "instagram"] as const;
+// YouTube pelo Upload-Post usa o app verificado deles: sem a auditoria do app Google os uploads pela API oficial saem privados
+export const UPLOADPOST_PLATFORMS = ["tiktok", "instagram", "youtube"] as const;
+/** Instagram: carrossel até 10 itens. TikTok aceita mais, mas o estúdio segue o limite menor. */
+export const CAROUSEL_MAX = 10;
 
 function key() {
   const k = uploadPostKey();
@@ -51,7 +56,7 @@ export async function uploadPostConnectUrl(userId: string) {
     username,
     platforms: [...UPLOADPOST_PLATFORMS],
     connect_title: "Conectar contas ao Cortix",
-    connect_description: "Conecte o TikTok e/ou o Instagram que vão receber seus cortes. Depois é só voltar ao Cortix.",
+    connect_description: "Conecte o TikTok, o Instagram e/ou o YouTube que vão receber seus cortes. Depois é só voltar ao Cortix.",
   });
   return j.access_url;
 }
@@ -88,7 +93,7 @@ export async function syncUploadPostAccounts(userId: string) {
 }
 
 /** Dispara o envio (assíncrono lá). Devolve o request_id pra acompanhar em uploadPostStatus. */
-export async function startUploadPost(input: { profile: string; platform: string; filePath: string; caption: string; title: string }) {
+export async function startUploadPost(input: { profile: string; platform: string; filePath: string; caption: string; title: string; youtube?: YoutubeMeta }) {
   const form = new FormData();
   form.append("user", input.profile);
   form.append("platform[]", input.platform);
@@ -101,7 +106,49 @@ export async function startUploadPost(input: { profile: string; platform: string
     form.append("post_mode", "DIRECT_POST");
   }
   if (input.platform === "instagram") form.append("media_type", "REELS");
-  const res = await fetch(`${API}/upload`, { method: "POST", headers: { Authorization: `Apikey ${key()}` }, body: form });
+  if (input.platform === "youtube") await appendYoutube(form, input.caption, input.title, input.youtube);
+  return sendUpload("/upload", form, input.platform);
+}
+
+/** Campos do YouTube no Upload-Post (youtube_title, tags[], categoryId, youtube_publish_at…). */
+async function appendYoutube(form: FormData, caption: string, fallbackTitle: string, yt?: YoutubeMeta) {
+  const { title, description, tags } = youtubeTexts(caption, fallbackTitle, yt);
+  form.append("youtube_title", title);
+  form.append("youtube_description", description);
+  for (const t of tags) form.append("tags[]", t);
+  form.append("categoryId", yt?.categoryId ?? "22");
+  form.append("selfDeclaredMadeForKids", String(yt?.madeForKids ?? false));
+  if (yt?.publishAt) form.append("youtube_publish_at", new Date(yt.publishAt).toISOString());
+  else form.append("privacyStatus", yt?.privacy ?? "public");
+  if (yt?.playlistId) form.append("youtube_playlist_id", yt.playlistId);
+  if (yt?.thumbnailPath) form.append("thumbnail", await fs.openAsBlob(yt.thumbnailPath, { type: /\.png$/i.test(yt.thumbnailPath) ? "image/png" : "image/jpeg" }), path.basename(yt.thumbnailPath));
+}
+
+/** Carrossel de fotos (upload_photos): Instagram até 10 imagens, TikTok como post de fotos. */
+export async function startUploadPhotos(input: { profile: string; platform: string; imagePaths: string[]; caption: string; title: string }) {
+  if (!input.imagePaths.length || input.imagePaths.length > CAROUSEL_MAX) throw new Error(`Carrossel precisa de 1 a ${CAROUSEL_MAX} imagens`);
+  const form = new FormData();
+  form.append("user", input.profile);
+  form.append("platform[]", input.platform);
+  for (const [i, p] of input.imagePaths.entries()) {
+    form.append("photos[]", await fs.openAsBlob(p, { type: /\.png$/i.test(p) ? "image/png" : "image/jpeg" }), `${String(i + 1).padStart(2, "0")}${path.extname(p) || ".jpg"}`);
+  }
+  const text = input.caption.slice(0, 2200) || input.title;
+  form.append("title", text);
+  form.append("description", text);
+  form.append("async_upload", "true");
+  if (input.platform === "tiktok") {
+    form.append("tiktok_title", (input.title || text).slice(0, 90));
+    form.append("tiktok_description", text.slice(0, 4000));
+    form.append("privacy_level", "PUBLIC_TO_EVERYONE");
+    form.append("post_mode", "DIRECT_POST");
+    form.append("auto_add_music", "true");
+  }
+  return sendUpload("/upload_photos", form, input.platform);
+}
+
+async function sendUpload(route: string, form: FormData, platform: string) {
+  const res = await fetch(`${API}${route}`, { method: "POST", headers: { Authorization: `Apikey ${key()}` }, body: form });
   const j = (await res.json().catch(() => ({}))) as {
     success?: boolean;
     request_id?: string;
@@ -111,7 +158,7 @@ export async function startUploadPost(input: { profile: string; platform: string
   if (res.status === 429) throw new Error("Limite mensal de envios do Upload-Post atingido (plano grátis: 10/mês).");
   if (!res.ok || j.success === false) throw new Error(`Upload-Post recusou o envio: ${j.message || `HTTP ${res.status}`}`);
   // envio curto pode voltar síncrono, já com o resultado
-  const r = j.results?.[input.platform];
+  const r = j.results?.[platform];
   if (r) {
     if (!r.success) throw new Error(`Upload-Post: ${r.error || r.message || "falhou na rede"}`);
     return { done: true as const, id: r.post_id ?? null, url: r.url ?? null };

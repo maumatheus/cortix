@@ -30,7 +30,7 @@ interface UploadPostIntegration {
 export async function startUploadPostConnect(onConnected: () => void) {
   const { url } = await api<{ url: string }>("/api/v1/social-accounts/uploadpost/connect");
   window.open(url, "_blank", "noopener");
-  toast.info("Conecte o TikTok/Instagram na página do Upload-Post. As contas aparecem aqui sozinhas.");
+  toast.info("Conecte o TikTok/Instagram/YouTube na página do Upload-Post. As contas aparecem aqui sozinhas.");
   let n = 0;
   const t = setInterval(async () => {
     await api("/api/v1/social-accounts/uploadpost/sync", { method: "POST" }).catch(() => {});

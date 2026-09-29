@@ -20,7 +20,13 @@ export const youtubeMetaSchema = z.object({
   thumbnailPath: z.string().min(1).optional(),
 });
 
-export const postMetaSchema = z.object({ youtube: youtubeMetaSchema.optional() });
+export const postMetaSchema = z.object({
+  youtube: youtubeMetaSchema.optional(),
+  /** MP4 local (ex.: render do Remotion do estúdio) no lugar de um corte do Cortix */
+  videoPath: z.string().min(1).optional(),
+  /** Carrossel de fotos (Instagram/TikTok via Upload-Post), 1 a 10 imagens JPG/PNG locais, na ordem */
+  carousel: z.object({ images: z.array(z.string().min(1)).min(1).max(10), title: z.string().max(200).optional() }).optional(),
+});
 
 export type YoutubeMeta = z.infer<typeof youtubeMetaSchema>;
 export type PostMeta = z.infer<typeof postMetaSchema>;
@@ -33,6 +39,13 @@ export function checkPostMeta(meta: PostMeta | null | undefined): string | null 
     if (!/\.(jpe?g|png)$/i.test(th)) return "A thumbnail precisa ser .jpg ou .png";
     if (fs.statSync(th).size > 2 * 1024 * 1024) return "A thumbnail passa de 2 MB (limite do YouTube)";
   }
+  const vp = meta?.videoPath;
+  if (vp && (!fs.existsSync(vp) || !/\.(mp4|mov)$/i.test(vp))) return `Vídeo não encontrado (ou não é .mp4/.mov): ${vp}`;
+  for (const img of meta?.carousel?.images ?? []) {
+    if (!fs.existsSync(img)) return `Imagem do carrossel não encontrada: ${img}`;
+    if (!/\.(jpe?g|png)$/i.test(img)) return `Imagem do carrossel precisa ser .jpg ou .png: ${img}`;
+  }
+  if (vp && meta?.carousel) return "Use videoPath OU carousel, não os dois";
   const at = meta?.youtube?.publishAt;
   if (at && Date.parse(at) < Date.now()) return "publishAt precisa ser no futuro";
   return null;
@@ -45,4 +58,18 @@ export function parsePostMeta(json: string | null | undefined): PostMeta {
   } catch {
     return {};
   }
+}
+
+/**
+ * Título = meta.title, ou 1ª linha da legenda, ou título do corte (máx. 100 caracteres).
+ * Descrição = meta.description ou a legenda, com #Shorts. Tags = meta.tags ou as hashtags da legenda.
+ */
+export function youtubeTexts(caption: string, fallbackTitle: string, yt?: YoutubeMeta) {
+  const linhas = caption.trim().split(/\r?\n/);
+  let title = (yt?.title || linhas[0] || fallbackTitle).replace(/[<>]/g, "").trim() || fallbackTitle;
+  if (title.length > 100) title = title.slice(0, 97).trimEnd() + "...";
+  let description = yt?.description?.trim() || caption.trim() || fallbackTitle;
+  if (!/#shorts\b/i.test(description)) description += "\n\n#Shorts";
+  const tags = yt?.tags?.length ? yt.tags.slice(0, 30) : Array.from(new Set((caption.match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))).slice(0, 15);
+  return { title, description: description.replace(/[<>]/g, "").slice(0, 5000), tags };
 }

@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import { db } from "./db";
 import { uploadYoutubeVideo, youtubeAccessToken } from "./social/youtube";
-import { startUploadPost, uploadPostStatus } from "./social/uploadpost";
+import { startUploadPhotos, startUploadPost, uploadPostStatus } from "./social/uploadpost";
 import { channelBlackout, resolveChannel, validateChannelSchedule } from "./schedule-rules";
-import { parsePostMeta, type YoutubeMeta } from "./post-meta";
+import { parsePostMeta, youtubeTexts } from "./post-meta";
+
+export { youtubeTexts }; // compat: smoke-publisher importa daqui
 
 /** Prefixo do externalId enquanto o envio assíncrono (Upload-Post) ainda está rolando lá. */
 export const PENDING_PREFIX = "req:";
@@ -117,24 +119,47 @@ async function publishReal(post: {
   meta: string | null;
   socialAccount: { id: string; platform: string; connection: string; externalId: string | null } | null;
 }): Promise<{ id: string | null; url: string | null; warning?: string | null } | { requestId: string }> {
-  if (!post.shortId) throw new Error("Post sem corte vinculado");
-  const short = await db.short.findUnique({ where: { id: post.shortId }, select: { title: true, hook: true } });
-  if (!short) throw new Error("O corte deste post foi excluído");
-  const render = await db.render.findFirst({ where: { shortId: post.shortId, status: "done", filePath: { not: null } }, orderBy: { completedAt: "desc" } });
-  if (!render?.filePath || !fs.existsSync(render.filePath)) throw new Error("O corte ainda não foi renderizado (ou o arquivo do render sumiu). Renderize e reagende.");
+  const meta = parsePostMeta(post.meta);
+  const yt = meta.youtube;
+  const acc = post.socialAccount!;
 
-  const yt = parsePostMeta(post.meta).youtube;
-  if (post.socialAccount!.connection === "uploadpost") {
-    if (!post.socialAccount!.externalId) throw new Error("Conta sem perfil do Upload-Post. Reconecte a conta.");
-    const r = await startUploadPost({ profile: post.socialAccount!.externalId, platform: post.socialAccount!.platform, filePath: render.filePath, caption: post.caption, title: yt?.title || short.title });
+  // carrossel de fotos: só pelo Upload-Post
+  if (meta.carousel) {
+    if (acc.connection !== "uploadpost" || !acc.externalId) throw new Error("Carrossel só sai por conta conectada via Upload-Post.");
+    const missing = meta.carousel.images.find((p) => !fs.existsSync(p));
+    if (missing) throw new Error(`Imagem do carrossel sumiu: ${missing}`);
+    const r = await startUploadPhotos({ profile: acc.externalId, platform: acc.platform, imagePaths: meta.carousel.images, caption: post.caption, title: meta.carousel.title ?? "" });
     return r.done ? { id: r.id, url: r.url } : { requestId: r.requestId };
   }
-  switch (post.socialAccount!.platform) {
+
+  // vídeo: arquivo local (ex.: render do Remotion) ou o último render do corte
+  let filePath: string;
+  let fallbackTitle: string;
+  if (meta.videoPath) {
+    if (!fs.existsSync(meta.videoPath)) throw new Error(`Vídeo não encontrado: ${meta.videoPath}`);
+    filePath = meta.videoPath;
+    fallbackTitle = yt?.title || post.caption.split(/\r?\n/)[0] || "Vídeo";
+  } else {
+    if (!post.shortId) throw new Error("Post sem corte vinculado");
+    const short = await db.short.findUnique({ where: { id: post.shortId }, select: { title: true, hook: true } });
+    if (!short) throw new Error("O corte deste post foi excluído");
+    const render = await db.render.findFirst({ where: { shortId: post.shortId, status: "done", filePath: { not: null } }, orderBy: { completedAt: "desc" } });
+    if (!render?.filePath || !fs.existsSync(render.filePath)) throw new Error("O corte ainda não foi renderizado (ou o arquivo do render sumiu). Renderize e reagende.");
+    filePath = render.filePath;
+    fallbackTitle = short.title;
+  }
+
+  if (acc.connection === "uploadpost") {
+    if (!acc.externalId) throw new Error("Conta sem perfil do Upload-Post. Reconecte a conta.");
+    const r = await startUploadPost({ profile: acc.externalId, platform: acc.platform, filePath, caption: post.caption, title: fallbackTitle, youtube: yt });
+    return r.done ? { id: r.id, url: r.url } : { requestId: r.requestId };
+  }
+  switch (acc.platform) {
     case "youtube": {
-      const token = await youtubeAccessToken(post.socialAccount!.id);
-      const { title, description, tags } = youtubeTexts(post.caption, short.title, yt);
+      const token = await youtubeAccessToken(acc.id);
+      const { title, description, tags } = youtubeTexts(post.caption, fallbackTitle, yt);
       return uploadYoutubeVideo(token, {
-        filePath: render.filePath,
+        filePath,
         title,
         description,
         tags,
@@ -147,20 +172,6 @@ async function publishReal(post: {
       });
     }
     default:
-      throw new Error(`Publicação real no ${post.socialAccount!.platform} ainda não está disponível`);
+      throw new Error(`Publicação real no ${acc.platform} ainda não está disponível`);
   }
-}
-
-/**
- * Título = meta.title, ou 1ª linha da legenda, ou título do corte (máx. 100 caracteres).
- * Descrição = meta.description ou a legenda, com #Shorts. Tags = meta.tags ou as hashtags da legenda.
- */
-export function youtubeTexts(caption: string, fallbackTitle: string, yt?: YoutubeMeta) {
-  const linhas = caption.trim().split(/\r?\n/);
-  let title = (yt?.title || linhas[0] || fallbackTitle).replace(/[<>]/g, "").trim() || fallbackTitle;
-  if (title.length > 100) title = title.slice(0, 97).trimEnd() + "...";
-  let description = yt?.description?.trim() || caption.trim() || fallbackTitle;
-  if (!/#shorts\b/i.test(description)) description += "\n\n#Shorts";
-  const tags = yt?.tags?.length ? yt.tags.slice(0, 30) : Array.from(new Set((caption.match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))).slice(0, 15);
-  return { title, description: description.replace(/[<>]/g, "").slice(0, 5000), tags };
 }

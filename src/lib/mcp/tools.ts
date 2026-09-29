@@ -79,7 +79,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "schedule_post",
     description:
-      "Agenda a publicação de um corte renderizado numa conta. No horário o Cortix sobe o vídeo (YouTube pela API oficial; TikTok/Instagram pelo Upload-Post). Regras: 3 posts/24h e 2h de intervalo por conta, e trava eleitoral no canal de política. Pra YouTube, meta.youtube aceita título, descrição, tags, categoria, playlist, publishAt, madeForKids e thumbnail.",
+      "Agenda a publicação numa conta: um corte do Cortix (shortId), um MP4 local (meta.videoPath, ex.: render do Remotion) ou um carrossel de fotos (meta.carousel, Instagram/TikTok). No horário o Cortix envia (Upload-Post pra TikTok/Instagram/YouTube, ou a API oficial do YouTube em conta OAuth). Regras: 3 posts/24h e 2h de intervalo por conta, e trava eleitoral no canal de política. Pra YouTube, meta.youtube aceita título, descrição, tags, categoria, playlist, publishAt, madeForKids e thumbnail.",
     inputSchema: {
       type: "object",
       properties: {
@@ -91,6 +91,13 @@ export const TOOLS: ToolDef[] = [
         meta: {
           type: "object",
           properties: {
+            videoPath: { type: "string", description: "Caminho local de um MP4 pra publicar no lugar de um corte do Cortix" },
+            carousel: {
+              type: "object",
+              description: "Carrossel de fotos: 1 a 10 imagens JPG/PNG locais, na ordem",
+              properties: { images: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 10 }, title: { type: "string" } },
+              required: ["images"],
+            },
             youtube: {
               type: "object",
               properties: {
@@ -108,7 +115,7 @@ export const TOOLS: ToolDef[] = [
           },
         },
       },
-      required: ["shortId", "platform", "scheduledAt"],
+      required: ["platform", "scheduledAt"],
     },
   },
   {
@@ -283,6 +290,8 @@ async function listSocialAccounts(user: User) {
 }
 
 async function schedulePost(user: User, args: Record<string, unknown>) {
+  const meta = (args.meta ?? {}) as { videoPath?: unknown; carousel?: unknown };
+  if (!args.shortId && !meta.videoPath && !meta.carousel) throw new ToolError("Informe shortId, meta.videoPath ou meta.carousel");
   try {
     const post = await createScheduledPost(user, args as never);
     return { post: { id: post.id, platform: post.platform, status: post.status, scheduledAt: post.scheduledAt, account: post.socialAccount?.handle ?? null }, message: "Agendado. Use get_post pra acompanhar." };
