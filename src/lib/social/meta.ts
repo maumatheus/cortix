@@ -24,8 +24,9 @@ export const META_CALLBACK_PATH = "/api/oauth/meta/callback";
 /** Prefixo do externalId enquanto o container do Instagram processa. */
 export const META_PENDING_PREFIX = "ig:";
 
+/** A Meta só aceita redirect sem HTTPS em "localhost" (o app desktop roda em 127.0.0.1, que é o mesmo servidor). */
 export function metaRedirectUri() {
-  return appUrl() + META_CALLBACK_PATH;
+  return appUrl().replace(/^http:\/\/127\.0\.0\.1(?=[:/]|$)/, "http://localhost") + META_CALLBACK_PATH;
 }
 
 function requireConfig() {
