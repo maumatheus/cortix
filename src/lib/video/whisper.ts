@@ -10,7 +10,10 @@ import type { Word } from "./transcript";
  * Binário e modelos são baixados no primeiro uso para storage/tools e storage/models
  * (no Windows); em outros sistemas use WHISPER_PATH ou o PATH.
  *
- * Modelo: CORTIX_WHISPER_MODEL = base (padrão, ~6x tempo real num Ryzen 6 núcleos) | small (mais preciso, ~3x mais lento).
+ * Modelo: CORTIX_WHISPER_MODEL = base (padrão, ~4x tempo real num Ryzen 6 núcleos) | small (mais preciso, ~2x mais lento).
+ *
+ * Anti-loop: sem contexto entre trechos (-mc 0) e com a busca padrão (beam 5 + fallback de temperatura).
+ * O modo guloso (-bs 1 -bo 1) era ~35% mais rápido mas entrava em loop ("Ela foi a sua chance..." 15x).
  */
 
 const WHISPER_RELEASE = "b5130";
@@ -113,7 +116,7 @@ export async function transcribeWithWhisper(src: string, o: TranscribeOptions): 
 
   const lang = (o.language || "").toLowerCase().split(/[-_]/)[0] || "auto";
   const threads = Math.max(1, Math.min(16, os.cpus().length - 2));
-  const args = ["-m", model, "-f", wav, "-l", lang, "-t", String(threads), "-bs", "1", "-bo", "1", "-ml", "1", "-sow", "-oj", "-of", outBase, "-np", "-pp", "--vad", "-vm", vad];
+  const args = ["-m", model, "-f", wav, "-l", lang, "-t", String(threads), "-mc", "0", "-ml", "1", "-sow", "-oj", "-of", outBase, "-np", "-pp", "--vad", "-vm", vad];
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -140,7 +143,7 @@ export async function transcribeWithWhisper(src: string, o: TranscribeOptions): 
       const end = offset + Math.max(seg.offsets.to, seg.offsets.from + 50) / 1000;
       words.push({ text, start, end });
     }
-    return words;
+    return collapseLoops(words);
   } finally {
     fs.rmSync(wav, { force: true });
     fs.rmSync(outBase + ".json", { force: true });
@@ -156,4 +159,31 @@ export function replaceRange(words: Word[], start: number, end: number, fresh: W
 
 export function whisperDisabled() {
   return process.env.CORTIX_WHISPER === "0";
+}
+
+const norm = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+
+/**
+ * Rede de segurança contra o loop do whisper: frase de 3 a 10 palavras repetida 3+ vezes seguidas
+ * fica só na primeira ocorrência.
+ */
+export function collapseLoops(words: Word[]): Word[] {
+  const out = [...words];
+  for (let i = 0; i < out.length; i++) {
+    for (let n = 10; n >= 3; n--) {
+      if (i + n * 3 > out.length) continue;
+      const same = (a: number, b: number) => {
+        for (let k = 0; k < n; k++) if (norm(out[a + k].text) !== norm(out[b + k].text)) return false;
+        return true;
+      };
+      let reps = 1;
+      while (i + n * (reps + 1) <= out.length && same(i, i + n * reps)) reps++;
+      if (reps >= 3) {
+        out.splice(i + n, n * (reps - 1));
+        break;
+      }
+    }
+  }
+  if (out.length < words.length) console.warn(`[whisper] loop de repetição removido (${words.length - out.length} palavras)`);
+  return out;
 }
