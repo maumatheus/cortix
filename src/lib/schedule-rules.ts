@@ -104,10 +104,35 @@ export function validateChannelSchedule(channel: string | null, dates: Date[]): 
   return null;
 }
 
-/** Impulsionamento pago é permitido pra esse canal? Canal com regra e boost:false → nunca. */
-export function canBoost(channel: string | null): boolean {
-  const rule = channel ? CHANNEL_RULES[resolveChannel(channel)!] : undefined;
-  return rule ? rule.boost : true;
+/**
+ * Canais que valem pra um post: o da conta E o do usuário. A trava é dura: marcar a conta com outro
+ * canal não desliga a regra do usuário (e vice-versa).
+ */
+export function postChannels(accountChannel?: string | null, userChannel?: string | null): string[] {
+  return [...new Set([resolveChannel(accountChannel, null), resolveChannel(null, userChannel)].filter((c): c is string => !!c))];
+}
+
+/** Horários em que o post vai ao ar: o agendado e, no YouTube, o publishAt (sobe antes e o YouTube solta depois). */
+export function airTimes(when: Date, meta?: { youtube?: { publishAt?: string } } | null): Date[] {
+  const at = meta?.youtube?.publishAt ? new Date(meta.youtube.publishAt) : null;
+  return at && !isNaN(at.getTime()) ? [when, at] : [when];
+}
+
+/** Trava do post: erro se algum horário cai numa janela de bloqueio de qualquer canal do post. */
+export function validatePostChannels(accountChannel: string | null | undefined, userChannel: string | null | undefined, dates: Date[]): string | null {
+  for (const c of postChannels(accountChannel, userChannel)) {
+    const err = validateChannelSchedule(c, dates);
+    if (err) return err;
+  }
+  return null;
+}
+
+/** Impulsionamento pago é permitido? Basta um dos canais ter regra com boost:false pra nunca impulsionar. */
+export function canBoost(...channels: Array<string | null | undefined>): boolean {
+  return channels.every((c) => {
+    const rule = c ? CHANNEL_RULES[resolveChannel(c)!] : undefined;
+    return rule ? rule.boost : true;
+  });
 }
 
 function fmtSp(iso: string) {

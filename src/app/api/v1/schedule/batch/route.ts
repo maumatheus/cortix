@@ -3,7 +3,7 @@ import { SOCIAL_PLATFORMS } from "@/lib/social/platforms";
 import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
 import { newId } from "@/lib/ids";
-import { buildBatchSlots, MAX_POSTS_PER_DAY, MIN_GAP_HOURS, resolveChannel, validateAccountSchedule, validateChannelSchedule } from "@/lib/schedule-rules";
+import { buildBatchSlots, MAX_POSTS_PER_DAY, MIN_GAP_HOURS, validateAccountSchedule, validatePostChannels } from "@/lib/schedule-rules";
 
 const schema = z.object({
   shortIds: z.array(z.string()).min(1, "Selecione pelo menos um corte").max(60),
@@ -35,7 +35,7 @@ export const POST = withUser(async ({ req, user }) => {
     where: { userId: user!.id, status: { in: ["scheduled", "publishing", "published"] }, ...(body.socialAccountId ? { socialAccountId: body.socialAccountId } : { socialAccountId: null, platform: body.platform }) },
     select: { scheduledAt: true },
   });
-  const err = validateChannelSchedule(resolveChannel(acc?.channel, user!.channel), slots) ?? validateAccountSchedule(siblings.map((s) => s.scheduledAt), slots);
+  const err = validatePostChannels(acc?.channel, user!.channel, slots) ?? validateAccountSchedule(siblings.map((s) => s.scheduledAt), slots);
   if (err) return fail(err, 400);
 
   const byId = new Map(shorts.map((s) => [s.id, s]));

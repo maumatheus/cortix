@@ -2,7 +2,7 @@ import { z } from "zod";
 import { SOCIAL_PLATFORMS } from "@/lib/social/platforms";
 import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
-import { resolveChannel, validateAccountSchedule, validateChannelSchedule } from "@/lib/schedule-rules";
+import { airTimes, validateAccountSchedule, validatePostChannels } from "@/lib/schedule-rules";
 import { checkPostMeta, parsePostMeta, postMetaSchema } from "@/lib/post-meta";
 import { postInclude } from "@/lib/schedule";
 import { publishDuePosts } from "@/lib/publisher";
@@ -56,7 +56,7 @@ export const PATCH = withUser(async ({ req, params, user }) => {
       where: { userId: user!.id, id: { not: post.id }, status: { in: ["scheduled", "publishing", "published"] }, ...(socialAccountId ? { socialAccountId } : { socialAccountId: null, platform }) },
       select: { scheduledAt: true },
     });
-    const err = validateChannelSchedule(resolveChannel(acc?.channel, user!.channel), [when]) ?? validateAccountSchedule(siblings.map((s) => s.scheduledAt), [when]);
+    const err = validatePostChannels(acc?.channel, user!.channel, airTimes(when, body.meta ?? parsePostMeta(post.meta))) ?? validateAccountSchedule(siblings.map((s) => s.scheduledAt), [when]);
     if (err) return fail(err, 400);
   }
   const updated = await db.scheduledPost.update({

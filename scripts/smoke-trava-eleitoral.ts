@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { db } from "../src/lib/db";
 import { migrateSqlite } from "../src/lib/db-migrate";
-import { canBoost, channelBlackout, resolveChannel, validateChannelSchedule } from "../src/lib/schedule-rules";
+import { airTimes, canBoost, channelBlackout, postChannels, resolveChannel, validateChannelSchedule, validatePostChannels } from "../src/lib/schedule-rules";
 import { publishDuePosts } from "../src/lib/publisher";
 import { newId } from "../src/lib/ids";
 
@@ -39,19 +39,47 @@ async function main() {
   assert.equal(canBoost("politica"), false);
   assert.equal(canBoost("missao-resumo"), false);
   assert.equal(canBoost("fase-secreta"), true);
+  assert.equal(canBoost("fase-secreta", "missao-resumo"), false, "um canal sem boost já proíbe");
+
+  // trava dura: conta marcada com outro canal NÃO desliga a trava do usuário de política (e vice-versa)
+  assert.deepEqual(postChannels("fase-secreta", "missao-resumo"), ["fase-secreta", "politica"]);
+  assert.match(validatePostChannels("fase-secreta", "politica", [sp("2026-10-03T12:00:00")]) ?? "", /Trava eleitoral/);
+  assert.match(validatePostChannels("politica", "fase-secreta", [sp("2026-10-03T12:00:00")]) ?? "", /Trava eleitoral/);
+  assert.equal(validatePostChannels("fase-secreta", null, [sp("2026-10-03T12:00:00")]), null);
+
+  // YouTube: sobe antes da janela mas o publishAt cai dentro → bloqueia
+  const antes = sp("2026-10-02T21:00:00");
+  assert.equal(airTimes(antes, null).length, 1);
+  assert.match(validatePostChannels(null, "politica", airTimes(antes, { youtube: { publishAt: "2026-10-03T00:30:00-03:00" } })) ?? "", /Trava eleitoral/);
+  assert.equal(validatePostChannels(null, "politica", airTimes(antes, { youtube: { publishAt: "2026-10-02T23:30:00-03:00" } })), null);
 
   // publicador: post vencido de conta "politica" não sai durante a janela.
   // Usuário descartável: o "now" do teste é futuro e não pode publicar posts de verdade.
   await migrateSqlite();
   const tag = newId();
   const user = await db.user.create({ data: { id: tag, name: "smoke trava", email: `smoke-trava-${tag}@local`, passwordHash: "x", referralCode: `T${tag.slice(-10)}` } });
+  const userPol = await db.user.create({ data: { id: newId(), name: "smoke trava pol", email: `smoke-trava-pol-${tag}@local`, passwordHash: "x", referralCode: `P${tag.slice(-10)}`, channel: "politica" } });
+  const accDisfarce = await db.socialAccount.create({ data: { id: newId(), userId: userPol.id, platform: "tiktok", handle: "@smoke-disfarce-" + Date.now(), channel: "fase-secreta" } });
   const acc = await db.socialAccount.create({ data: { id: newId(), userId: user.id, platform: "tiktok", handle: "@smoke-trava-" + Date.now(), channel: "politica" } });
   const accLivre = await db.socialAccount.create({ data: { id: newId(), userId: user.id, platform: "tiktok", handle: "@smoke-livre-" + Date.now(), channel: "fase-secreta" } });
   const quando = sp("2026-10-03T09:00:00");
   const bloqueado = await db.scheduledPost.create({ data: { id: newId(), userId: user.id, socialAccountId: acc.id, platform: "tiktok", caption: "trava", scheduledAt: new Date(quando.getTime() - 60_000) } });
+  const disfarce = await db.scheduledPost.create({ data: { id: newId(), userId: userPol.id, socialAccountId: accDisfarce.id, platform: "tiktok", caption: "disfarce", scheduledAt: new Date(quando.getTime() - 60_000) } });
+  // sobe antes da janela, mas o YouTube soltaria dentro dela
+  const ytAntes = await db.scheduledPost.create({ data: { id: newId(), userId: userPol.id, platform: "youtube", caption: "yt", scheduledAt: sp("2026-10-02T21:00:00"), meta: JSON.stringify({ youtube: { publishAt: "2026-10-03T00:30:00-03:00" } }) } });
   const livre = await db.scheduledPost.create({ data: { id: newId(), userId: user.id, socialAccountId: accLivre.id, platform: "tiktok", caption: "livre", scheduledAt: new Date(quando.getTime() - 60_000) } });
   try {
+    // 02/10 21:00 está fora da janela: só o publishAt (03/10 00:30) pode barrar o post do YouTube
+    const r0 = await publishDuePosts(userPol.id, { now: sp("2026-10-02T21:00:00") });
+    assert.equal(r0.blocked, 1);
     const r = await publishDuePosts(user.id, { now: quando });
+    const r2 = await publishDuePosts(userPol.id, { now: quando });
+    for (const id of [disfarce.id, ytAntes.id]) {
+      const p = await db.scheduledPost.findUnique({ where: { id } });
+      assert.equal(p?.status, "failed", `post ${p?.caption} deveria ter sido barrado`);
+      assert.match(p?.error ?? "", /Trava eleitoral/);
+    }
+    assert.ok(r2.blocked >= 1);
     const b = await db.scheduledPost.findUnique({ where: { id: bloqueado.id } });
     const l = await db.scheduledPost.findUnique({ where: { id: livre.id } });
     assert.equal(b?.status, "failed");
@@ -60,8 +88,8 @@ async function main() {
     assert.ok(r.blocked >= 1);
     console.log("ok: post bloqueado com:", b?.error);
   } finally {
-    await db.scheduledPost.deleteMany({ where: { id: { in: [bloqueado.id, livre.id] } } });
-    await db.user.delete({ where: { id: user.id } }); // cascade: contas e posts
+    await db.scheduledPost.deleteMany({ where: { id: { in: [bloqueado.id, livre.id, disfarce.id, ytAntes.id] } } });
+    await db.user.deleteMany({ where: { id: { in: [user.id, userPol.id] } } }); // cascade: contas e posts
   }
   console.log("smoke-trava-eleitoral: tudo certo");
 }

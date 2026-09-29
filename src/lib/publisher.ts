@@ -4,7 +4,7 @@ import { uploadYoutubeVideo, youtubeAccessToken } from "./social/youtube";
 import { startUploadPhotos, startUploadPost, uploadPostStatus } from "./social/uploadpost";
 import { META_PENDING_PREFIX, metaPendingStatus, publishMetaCarousel, publishMetaVideo } from "./social/meta";
 import { youtubeAudited } from "./social/config";
-import { channelBlackout, resolveChannel, validateChannelSchedule } from "./schedule-rules";
+import { airTimes, validatePostChannels } from "./schedule-rules";
 import { parsePostMeta, youtubeTexts } from "./post-meta";
 
 export { youtubeTexts }; // compat: smoke-publisher importa daqui
@@ -42,9 +42,9 @@ async function rodada(userId: string | undefined, now: Date) {
   let blocked = 0;
   for (const post of due) {
     // trava eleitoral: dentro da janela do canal nada sai, nem simulado; o post falha e precisa ser reagendado
-    const channel = resolveChannel(post.socialAccount?.channel, post.user.channel);
-    if (channelBlackout(channel, now)) {
-      const msg = validateChannelSchedule(channel, [now])!;
+    // (vale o canal da conta e o do usuário, e também o publishAt do YouTube)
+    const msg = validatePostChannels(post.socialAccount?.channel, post.user.channel, airTimes(now, parsePostMeta(post.meta)));
+    if (msg) {
       await db.scheduledPost.updateMany({ where: { id: post.id, status: "scheduled" }, data: { status: "failed", error: msg.slice(0, 500) } });
       console.warn(`[publisher] post ${post.id} bloqueado: ${msg}`);
       blocked++;

@@ -3,7 +3,7 @@ import { SOCIAL_PLATFORMS } from "@/lib/social/platforms";
 import { db } from "./db";
 import { newId } from "./ids";
 import { checkPostMeta, postMetaSchema } from "./post-meta";
-import { accountKey, resolveChannel, validateAccountSchedule, validateChannelSchedule } from "./schedule-rules";
+import { accountKey, airTimes, validateAccountSchedule, validatePostChannels } from "./schedule-rules";
 
 /** Entrada de um post agendado (API v1 POST /schedule e tool schedule_post do MCP). */
 export const createPostSchema = z.object({
@@ -59,7 +59,7 @@ export async function createScheduledPost(user: { id: string; channel?: string |
   }
 
   // trava eleitoral / regras do canal
-  const blocked = validateChannelSchedule(resolveChannel(account?.channel, user.channel), [when]);
+  const blocked = validatePostChannels(account?.channel, user.channel, airTimes(when, body.meta));
   if (blocked) throw new ScheduleError(blocked, 400, { rule: "channel-blackout" });
 
   // regras por conta: 3 posts / 24h e 2h de intervalo
