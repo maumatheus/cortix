@@ -26,6 +26,14 @@ export const postMetaSchema = z.object({
   videoPath: z.string().min(1).optional(),
   /** Carrossel de fotos (Instagram/Facebook pela Meta; Instagram/TikTok via Upload-Post), 1 a 10 imagens JPG/PNG locais, na ordem */
   carousel: z.object({ images: z.array(z.string().min(1)).min(1).max(10), title: z.string().max(200).optional() }).optional(),
+  /** Reel do Instagram: capa (JPG/PNG local, hospedada na hora) ou quadro do vídeo em ms; shareToFeed padrão true */
+  instagram: z
+    .object({
+      coverPath: z.string().min(1).optional(),
+      thumbOffsetMs: z.number().int().min(0).optional(),
+      shareToFeed: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export type YoutubeMeta = z.infer<typeof youtubeMetaSchema>;
@@ -46,6 +54,8 @@ export function checkPostMeta(meta: PostMeta | null | undefined): string | null 
     if (!/\.(jpe?g|png)$/i.test(img)) return `Imagem do carrossel precisa ser .jpg ou .png: ${img}`;
   }
   if (vp && meta?.carousel) return "Use videoPath OU carousel, não os dois";
+  const cover = meta?.instagram?.coverPath;
+  if (cover && (!fs.existsSync(cover) || !/\.(jpe?g|png)$/i.test(cover))) return `Capa do Reel não encontrada (ou não é .jpg/.png): ${cover}`;
   const at = meta?.youtube?.publishAt;
   if (at && Date.parse(at) < Date.now()) return "publishAt precisa ser no futuro";
   return null;

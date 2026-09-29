@@ -79,7 +79,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "schedule_post",
     description:
-      "Agenda a publicação numa conta: um corte do Cortix (shortId), um MP4 local (meta.videoPath, ex.: render do Remotion) ou um carrossel de fotos (meta.carousel, Instagram/Facebook/TikTok). No horário o Cortix envia pela API oficial (YouTube Data API em conta oauth, que sobe PRIVADO até o app Google passar na auditoria; Graph API da Meta em conta meta: Reels e carrossel no Instagram/Facebook) ou pelo Upload-Post (quebra-galho do TikTok, 10 envios/mês no grátis). Regras: 3 posts/24h e 2h de intervalo por conta, e trava eleitoral no canal de política. Pra YouTube, meta.youtube aceita título, descrição, tags, categoria, playlist, publishAt, madeForKids e thumbnail.",
+      "Agenda a publicação numa conta: um corte do Cortix (shortId), um MP4 local (meta.videoPath, ex.: render do Remotion) ou um carrossel de fotos (meta.carousel, Instagram/Facebook/TikTok). No horário o Cortix envia pela API oficial (YouTube Data API em conta oauth, que sobe PRIVADO até o app Google passar na auditoria; Graph API da Meta em conta meta ou instagram (login do Instagram, token renovado sozinho): Reels e carrossel no Instagram/Facebook; meta.instagram.coverPath define a capa do Reel) ou pelo Upload-Post (quebra-galho do TikTok, 10 envios/mês no grátis). Regras: 3 posts/24h e 2h de intervalo por conta, e trava eleitoral no canal de política. Pra YouTube, meta.youtube aceita título, descrição, tags, categoria, playlist, publishAt, madeForKids e thumbnail.",
     inputSchema: {
       type: "object",
       properties: {
@@ -97,6 +97,11 @@ export const TOOLS: ToolDef[] = [
               description: "Carrossel de fotos: 1 a 10 imagens JPG/PNG locais, na ordem",
               properties: { images: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 10 }, title: { type: "string" } },
               required: ["images"],
+            },
+            instagram: {
+              type: "object",
+              description: "Reel do Instagram: capa local (JPG/PNG) ou quadro do vídeo em ms",
+              properties: { coverPath: { type: "string" }, thumbOffsetMs: { type: "integer" }, shareToFeed: { type: "boolean", default: true } },
             },
             youtube: {
               type: "object",

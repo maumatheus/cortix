@@ -121,10 +121,10 @@ export default function SocialMediaPage() {
                   <p className="text-xs text-muted-foreground">
                     {platformInfo(a.platform).name} · conectada há {timeAgo(a.createdAt)}
                   </p>
-                  {a.connection === "oauth" || a.connection === "uploadpost" || a.connection === "meta" ? (
+                  {a.connection === "oauth" || a.connection === "uploadpost" || a.connection === "meta" || a.connection === "instagram" ? (
                     <>
                       <p className="mt-1 flex items-center gap-1 text-[11px] text-success">
-                        <span className="size-1.5 rounded-full bg-success" /> Publicação real{a.connection === "uploadpost" ? " (Upload-Post)" : a.connection === "meta" ? " (Meta)" : ""} · {a.postsCount ?? 0} posts
+                        <span className="size-1.5 rounded-full bg-success" /> Publicação real{a.connection === "uploadpost" ? " (Upload-Post)" : a.connection === "meta" ? " (Meta)" : a.connection === "instagram" ? " (login do Instagram)" : ""} · {a.postsCount ?? 0} posts
                       </p>
                       {a.connection === "oauth" && a.platform === "youtube" && yt && !yt.audited ? (
                         <p className="mt-0.5 text-[11px] text-warning" title="Sem a auditoria do app Google o YouTube trava uploads pela API como privados. Abra o YouTube Studio e mude pra Público.">

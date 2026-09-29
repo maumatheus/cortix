@@ -53,7 +53,7 @@ export async function createScheduledPost(user: { id: string; channel?: string |
   if (metaErr) throw new ScheduleError(metaErr, 422);
   if (body.meta?.carousel) {
     if (body.platform === "youtube") throw new ScheduleError("Carrossel só no Instagram, no Facebook ou no TikTok", 422);
-    if (account && account.connection !== "uploadpost" && account.connection !== "meta") throw new ScheduleError("Carrossel só sai por conta conectada pela Meta ou via Upload-Post", 422);
+    if (account && !["uploadpost", "meta", "instagram"].includes(account.connection)) throw new ScheduleError("Carrossel só sai por conta conectada pela Meta (Facebook ou login do Instagram) ou via Upload-Post", 422);
   } else if (account && account.connection !== "simulated" && !body.shortId && !body.meta?.videoPath) {
     throw new ScheduleError("Informe o corte (shortId), um vídeo local (meta.videoPath) ou um carrossel (meta.carousel)", 422);
   }

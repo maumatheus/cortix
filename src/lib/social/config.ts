@@ -18,6 +18,17 @@ interface IntegrationsFile {
   youtube?: Partial<YoutubeConfig> & { audited?: boolean };
   uploadpost?: { apiKey?: string };
   meta?: Partial<MetaConfig>;
+  mediaHost?: Partial<MediaHostConfig>;
+}
+
+/**
+ * Hospedagem temporária de imagens (capa de Reel e fotos de carrossel) quando a conta do Instagram não tem
+ * Página do Facebook pra servir de CDN: bucket público num Supabase próprio. Os arquivos são apagados depois.
+ */
+export interface MediaHostConfig {
+  url: string;
+  serviceKey: string;
+  bucket: string;
 }
 
 /** App Business próprio da Meta (Instagram + Facebook pela Graph API). configId: Facebook Login for Business (opcional). */
@@ -87,6 +98,21 @@ export function saveMetaConfig(cfg: MetaConfig | null) {
   const atual = readFile();
   if (cfg) atual.meta = cfg;
   else delete atual.meta;
+  writeFile(atual);
+}
+
+export function mediaHostConfig(): MediaHostConfig | null {
+  const f = readFile().mediaHost ?? {};
+  const url = (process.env.MEDIA_HOST_SUPABASE_URL || f.url || "").replace(/\/$/, "");
+  const serviceKey = process.env.MEDIA_HOST_SUPABASE_KEY || f.serviceKey || "";
+  const bucket = process.env.MEDIA_HOST_BUCKET || f.bucket || "cortix-midia";
+  return url && serviceKey ? { url, serviceKey, bucket } : null;
+}
+
+export function saveMediaHostConfig(cfg: MediaHostConfig | null) {
+  const atual = readFile();
+  if (cfg) atual.mediaHost = cfg;
+  else delete atual.mediaHost;
   writeFile(atual);
 }
 

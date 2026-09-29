@@ -15,7 +15,7 @@ export interface SocialAccountItem {
   platform: PlatformId;
   handle: string;
   purpose: "publish" | "championship";
-  connection?: "simulated" | "oauth" | "uploadpost" | "meta";
+  connection?: "simulated" | "oauth" | "uploadpost" | "meta" | "instagram";
   createdAt: string;
   postsCount?: number;
 }

@@ -18,7 +18,7 @@ export const YOUTUBE_PRIVATE_WARNING = "subiu PRIVADO no YouTube (app do Google 
 /**
  * Publicador: pega os posts cujo horário já passou e publica.
  * - Conta conectada por OAuth (YouTube) → upload de verdade pela API oficial.
- * - Conta conectada pela Meta (Instagram/Facebook, Graph API) → Reels/carrossel; o container do IG é assíncrono.
+ * - Conta conectada pela Meta (Instagram/Facebook, Graph API) ou pelo login do Instagram → Reels/carrossel; o container do IG é assíncrono.
  * - Conta conectada via Upload-Post (quebra-galho do TikTok) → envio assíncrono; as rodadas seguintes consultam o status.
  * - Conta simulada / sem conta → só marca como publicado (comportamento antigo, sem falar com a rede).
  * Também dá baixa nos itens de launcher vencidos.
@@ -50,7 +50,7 @@ async function rodada(userId: string | undefined, now: Date) {
       blocked++;
       continue;
     }
-    const real = ["oauth", "uploadpost", "meta"].includes(post.socialAccount?.connection ?? "");
+    const real = ["oauth", "uploadpost", "meta", "instagram"].includes(post.socialAccount?.connection ?? "");
     if (!real) {
       await db.scheduledPost.update({ where: { id: post.id }, data: { status: "published", publishedAt: now } });
       if (post.shortId) await db.short.update({ where: { id: post.shortId }, data: { isPublished: true, isScheduled: false } }).catch(() => {});
@@ -136,7 +136,7 @@ async function publishReal(post: {
   if (meta.carousel) {
     const missing = meta.carousel.images.find((p) => !fs.existsSync(p));
     if (missing) throw new Error(`Imagem do carrossel sumiu: ${missing}`);
-    if (acc.connection === "meta") return publishMetaCarousel(acc.id, { imagePaths: meta.carousel.images, caption: post.caption });
+    if (acc.connection === "meta" || acc.connection === "instagram") return publishMetaCarousel(acc.id, { imagePaths: meta.carousel.images, caption: post.caption });
     if (acc.connection !== "uploadpost" || !acc.externalId) throw new Error("Carrossel só sai por conta conectada pela Meta ou via Upload-Post.");
     const r = await startUploadPhotos({ profile: acc.externalId, platform: acc.platform, imagePaths: meta.carousel.images, caption: post.caption, title: meta.carousel.title ?? "" });
     return r.done ? { id: r.id, url: r.url } : { requestId: r.requestId };
@@ -159,7 +159,10 @@ async function publishReal(post: {
     fallbackTitle = short.title;
   }
 
-  if (acc.connection === "meta") return publishMetaVideo(acc.id, { filePath, caption: post.caption });
+  if (acc.connection === "meta" || acc.connection === "instagram") {
+    const ig = meta.instagram;
+    return publishMetaVideo(acc.id, { filePath, caption: post.caption, coverPath: ig?.coverPath, thumbOffsetMs: ig?.thumbOffsetMs, shareToFeed: ig?.shareToFeed });
+  }
   if (acc.connection === "uploadpost") {
     if (!acc.externalId) throw new Error("Conta sem perfil do Upload-Post. Reconecte a conta.");
     const r = await startUploadPost({ profile: acc.externalId, platform: acc.platform, filePath, caption: post.caption, title: fallbackTitle, youtube: yt });
