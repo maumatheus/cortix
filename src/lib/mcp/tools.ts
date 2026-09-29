@@ -79,13 +79,13 @@ export const TOOLS: ToolDef[] = [
   {
     name: "schedule_post",
     description:
-      "Agenda a publicação numa conta: um corte do Cortix (shortId), um MP4 local (meta.videoPath, ex.: render do Remotion) ou um carrossel de fotos (meta.carousel, Instagram/TikTok). No horário o Cortix envia (Upload-Post pra TikTok/Instagram/YouTube, ou a API oficial do YouTube em conta OAuth). Regras: 3 posts/24h e 2h de intervalo por conta, e trava eleitoral no canal de política. Pra YouTube, meta.youtube aceita título, descrição, tags, categoria, playlist, publishAt, madeForKids e thumbnail.",
+      "Agenda a publicação numa conta: um corte do Cortix (shortId), um MP4 local (meta.videoPath, ex.: render do Remotion) ou um carrossel de fotos (meta.carousel, Instagram/Facebook/TikTok). No horário o Cortix envia pela API oficial (YouTube Data API em conta oauth, que sobe PRIVADO até o app Google passar na auditoria; Graph API da Meta em conta meta: Reels e carrossel no Instagram/Facebook) ou pelo Upload-Post (quebra-galho do TikTok, 10 envios/mês no grátis). Regras: 3 posts/24h e 2h de intervalo por conta, e trava eleitoral no canal de política. Pra YouTube, meta.youtube aceita título, descrição, tags, categoria, playlist, publishAt, madeForKids e thumbnail.",
     inputSchema: {
       type: "object",
       properties: {
         shortId: { type: "string", description: "ID do corte (precisa estar renderizado na hora de publicar)" },
         socialAccountId: { type: "string", description: "ID da conta (list_social_accounts)" },
-        platform: { type: "string", enum: ["youtube", "tiktok", "instagram"] },
+        platform: { type: "string", enum: ["youtube", "tiktok", "instagram", "facebook"] },
         caption: { type: "string", description: "Legenda (TikTok/Instagram) ou fallback de título/descrição (YouTube)" },
         scheduledAt: { type: "string", description: "Quando publicar, ISO 8601 com fuso (ex.: 2026-10-01T18:00:00-03:00)" },
         meta: {
@@ -305,7 +305,7 @@ async function schedulePost(user: User, args: Record<string, unknown>) {
 type PostRow = { id: string; platform: string; status: string; scheduledAt: Date; publishedAt: Date | null; externalId: string | null; externalUrl: string | null; error: string | null; caption: string; meta: string | null; shortId: string | null; socialAccountId: string | null };
 
 function postView(p: PostRow) {
-  const pending = p.externalId?.startsWith("req:");
+  const pending = p.externalId?.startsWith("req:") || p.externalId?.startsWith("ig:");
   return { id: p.id, platform: p.platform, status: p.status, scheduledAt: p.scheduledAt, publishedAt: p.publishedAt, externalId: pending ? null : p.externalId, externalUrl: p.externalUrl, error: p.error, shortId: p.shortId, socialAccountId: p.socialAccountId, caption: p.caption, meta: parsePostMeta(p.meta) };
 }
 

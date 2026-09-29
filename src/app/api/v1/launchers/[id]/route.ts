@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SOCIAL_PLATFORMS } from "@/lib/social/platforms";
 import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
 import { nextSlot, parseTimes } from "@/lib/launcher-slots";
@@ -6,7 +7,7 @@ import { launcherInclude, serializeLauncher } from "@/lib/launchers";
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
-  platforms: z.array(z.enum(["tiktok", "instagram", "youtube"])).min(1).optional(),
+  platforms: z.array(z.enum(SOCIAL_PLATFORMS)).min(1).optional(),
   times: z.array(z.string().regex(/^\d{2}:\d{2}$/)).min(1).max(12).optional(),
   status: z.enum(["active", "paused"]).optional(),
 });

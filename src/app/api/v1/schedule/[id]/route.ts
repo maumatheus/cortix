@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SOCIAL_PLATFORMS } from "@/lib/social/platforms";
 import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
 import { resolveChannel, validateAccountSchedule, validateChannelSchedule } from "@/lib/schedule-rules";
@@ -10,7 +11,7 @@ const patchSchema = z.object({
   caption: z.string().max(2200).optional(),
   scheduledAt: z.string().optional(),
   socialAccountId: z.string().optional().nullable(),
-  platform: z.enum(["tiktok", "instagram", "youtube"]).optional(),
+  platform: z.enum(SOCIAL_PLATFORMS).optional(),
   status: z.enum(["scheduled", "canceled"]).optional(),
   meta: postMetaSchema.optional(),
 });

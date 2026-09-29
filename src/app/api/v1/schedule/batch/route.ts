@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SOCIAL_PLATFORMS } from "@/lib/social/platforms";
 import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
 import { newId } from "@/lib/ids";
@@ -6,7 +7,7 @@ import { buildBatchSlots, MAX_POSTS_PER_DAY, MIN_GAP_HOURS, resolveChannel, vali
 
 const schema = z.object({
   shortIds: z.array(z.string()).min(1, "Selecione pelo menos um corte").max(60),
-  platform: z.enum(["tiktok", "instagram", "youtube"]),
+  platform: z.enum(SOCIAL_PLATFORMS),
   socialAccountId: z.string().optional().nullable(),
   startAt: z.string().min(1, "Informe a data de início"),
   intervalHours: z.number().min(MIN_GAP_HOURS).max(24).default(MIN_GAP_HOURS),

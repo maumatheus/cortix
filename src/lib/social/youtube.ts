@@ -7,6 +7,10 @@ import { appUrl, youtubeConfig } from "./config";
 // force-ssl: pôr o vídeo numa playlist (contas conectadas antes precisam reconectar pra ganhar esse escopo)
 const SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/youtube.force-ssl"];
 
+// sobrescrevíveis só pro smoke test (API falsa)
+const GAPI = (process.env.YOUTUBE_API_URL || "https://www.googleapis.com").replace(/\/$/, "");
+const TOKEN_URL = process.env.GOOGLE_TOKEN_URL || "https://oauth2.googleapis.com/token";
+
 export const YOUTUBE_CALLBACK_PATH = "/api/oauth/youtube/callback";
 
 export function youtubeRedirectUri() {
@@ -45,7 +49,7 @@ interface TokenResponse {
 
 async function tokenRequest(params: Record<string, string>): Promise<TokenResponse> {
   const cfg = requireConfig();
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, ...params }),
@@ -60,7 +64,7 @@ export function exchangeYoutubeCode(code: string) {
 }
 
 export async function youtubeChannel(accessToken: string) {
-  const res = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", { headers: { Authorization: `Bearer ${accessToken}` } });
+  const res = await fetch(`${GAPI}/youtube/v3/channels?part=snippet&mine=true`, { headers: { Authorization: `Bearer ${accessToken}` } });
   const j = (await res.json().catch(() => ({}))) as { items?: Array<{ id: string; snippet: { title: string; customUrl?: string } }>; error?: { message: string } };
   if (!res.ok) throw new Error(`Não consegui ler o canal: ${j.error?.message || res.status}`);
   const ch = j.items?.[0];
@@ -111,7 +115,7 @@ export async function uploadYoutubeVideo(accessToken: string, input: YoutubeUplo
       embeddable: true,
     },
   };
-  const init = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", {
+  const init = await fetch(`${GAPI}/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -134,7 +138,7 @@ export async function uploadYoutubeVideo(accessToken: string, input: YoutubeUplo
 
   const warnings: string[] = [];
   if (input.thumbnailPath) {
-    const th = await fetch(`https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${j.id}`, {
+    const th = await fetch(`${GAPI}/upload/youtube/v3/thumbnails/set?videoId=${j.id}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": /\.png$/i.test(input.thumbnailPath) ? "image/png" : "image/jpeg" },
       body: fs.readFileSync(input.thumbnailPath),
@@ -142,7 +146,7 @@ export async function uploadYoutubeVideo(accessToken: string, input: YoutubeUplo
     if (!th.ok) warnings.push(`thumbnail não aplicada: ${await apiError(th)}`);
   }
   if (input.playlistId) {
-    const pl = await fetch("https://www.googleapis.com/youtube/v3/playlistItems?part=snippet", {
+    const pl = await fetch(`${GAPI}/youtube/v3/playlistItems?part=snippet`, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({ snippet: { playlistId: input.playlistId, resourceId: { kind: "youtube#video", videoId: j.id } } }),

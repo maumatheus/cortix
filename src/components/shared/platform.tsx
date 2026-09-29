@@ -2,12 +2,13 @@
 
 import { cn } from "@/lib/utils";
 
-export type PlatformId = "youtube" | "instagram" | "tiktok";
+export type PlatformId = "youtube" | "instagram" | "tiktok" | "facebook";
 
 export const PLATFORMS: Array<{ id: PlatformId; name: string; short: string; color: string; hint: string }> = [
   { id: "youtube", name: "YouTube", short: "YT", color: "#ff0033", hint: "Shorts" },
   { id: "instagram", name: "Instagram", short: "IG", color: "#e1306c", hint: "Reels" },
   { id: "tiktok", name: "TikTok", short: "TT", color: "#25f4ee", hint: "TikTok" },
+  { id: "facebook", name: "Facebook", short: "FB", color: "#1877f2", hint: "Reels" },
 ];
 
 export function platformInfo(id: string) {

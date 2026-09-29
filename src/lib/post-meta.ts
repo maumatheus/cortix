@@ -24,7 +24,7 @@ export const postMetaSchema = z.object({
   youtube: youtubeMetaSchema.optional(),
   /** MP4 local (ex.: render do Remotion do estúdio) no lugar de um corte do Cortix */
   videoPath: z.string().min(1).optional(),
-  /** Carrossel de fotos (Instagram/TikTok via Upload-Post), 1 a 10 imagens JPG/PNG locais, na ordem */
+  /** Carrossel de fotos (Instagram/Facebook pela Meta; Instagram/TikTok via Upload-Post), 1 a 10 imagens JPG/PNG locais, na ordem */
   carousel: z.object({ images: z.array(z.string().min(1)).min(1).max(10), title: z.string().max(200).optional() }).optional(),
 });
 

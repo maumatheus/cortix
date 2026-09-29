@@ -15,8 +15,16 @@ export interface YoutubeConfig {
 }
 
 interface IntegrationsFile {
-  youtube?: Partial<YoutubeConfig>;
+  youtube?: Partial<YoutubeConfig> & { audited?: boolean };
   uploadpost?: { apiKey?: string };
+  meta?: Partial<MetaConfig>;
+}
+
+/** App Business próprio da Meta (Instagram + Facebook pela Graph API). configId: Facebook Login for Business (opcional). */
+export interface MetaConfig {
+  appId: string;
+  appSecret: string;
+  configId?: string;
 }
 
 function file() {
@@ -44,9 +52,46 @@ export function youtubeConfigFromEnv() {
 
 export function saveYoutubeConfig(cfg: YoutubeConfig | null) {
   const atual = readFile();
-  if (cfg) atual.youtube = cfg;
+  if (cfg) atual.youtube = { ...cfg, audited: atual.youtube?.audited };
   else delete atual.youtube;
-  fs.writeFileSync(file(), JSON.stringify(atual, null, 2), "utf8");
+  writeFile(atual);
+}
+
+/**
+ * App do Google já passou na auditoria da API do YouTube? Sem ela o YouTube trava todo upload como privado,
+ * então o Cortix sobe privado de propósito e avisa pra publicar na mão no YouTube Studio.
+ */
+export function youtubeAudited() {
+  return process.env.YOUTUBE_AUDITED === "1" || readFile().youtube?.audited === true;
+}
+
+export function saveYoutubeAudited(audited: boolean) {
+  const atual = readFile();
+  atual.youtube = { ...atual.youtube, audited };
+  writeFile(atual);
+}
+
+export function metaConfig(): MetaConfig | null {
+  const f = readFile().meta ?? {};
+  const appId = process.env.META_APP_ID || f.appId || "";
+  const appSecret = process.env.META_APP_SECRET || f.appSecret || "";
+  const configId = process.env.META_CONFIG_ID || f.configId || undefined;
+  return appId && appSecret ? { appId, appSecret, configId } : null;
+}
+
+export function metaConfigFromEnv() {
+  return !!(process.env.META_APP_ID && process.env.META_APP_SECRET);
+}
+
+export function saveMetaConfig(cfg: MetaConfig | null) {
+  const atual = readFile();
+  if (cfg) atual.meta = cfg;
+  else delete atual.meta;
+  writeFile(atual);
+}
+
+function writeFile(data: IntegrationsFile) {
+  fs.writeFileSync(file(), JSON.stringify(data, null, 2), "utf8");
 }
 
 /** Upload-Post (TikTok/Instagram sem app próprio nas redes): UPLOADPOST_API_KEY ou integrations.json. */
@@ -62,7 +107,7 @@ export function saveUploadPostKey(apiKey: string | null) {
   const atual = readFile();
   if (apiKey) atual.uploadpost = { apiKey };
   else delete atual.uploadpost;
-  fs.writeFileSync(file(), JSON.stringify(atual, null, 2), "utf8");
+  writeFile(atual);
 }
 
 export function appUrl() {

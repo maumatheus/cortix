@@ -82,7 +82,7 @@ export async function syncUploadPostAccounts(userId: string) {
     found.push({ platform, handle: raw.startsWith("@") ? raw : `@${raw}`, reauth: !!a.reauth_required });
   }
   for (const f of found) {
-    const existente = await db.socialAccount.findFirst({ where: { userId, platform: f.platform, purpose: "publish", OR: [{ connection: "uploadpost" }, { handle: f.handle }] } });
+    const existente = await db.socialAccount.findFirst({ where: { userId, platform: f.platform, purpose: "publish", connection: { not: "meta" }, OR: [{ connection: "uploadpost" }, { handle: f.handle }] } });
     if (existente) await db.socialAccount.update({ where: { id: existente.id }, data: { handle: f.handle, connection: "uploadpost", externalId: username } });
     else await db.socialAccount.create({ data: { id: newId(), userId, platform: f.platform, handle: f.handle, purpose: "publish", connection: "uploadpost", externalId: username } });
   }

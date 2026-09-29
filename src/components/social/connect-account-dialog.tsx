@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ExternalLink, Info, KeyRound, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ExternalLink, Info, KeyRound, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
@@ -15,7 +15,7 @@ export interface SocialAccountItem {
   platform: PlatformId;
   handle: string;
   purpose: "publish" | "championship";
-  connection?: "simulated" | "oauth" | "uploadpost";
+  connection?: "simulated" | "oauth" | "uploadpost" | "meta";
   createdAt: string;
   postsCount?: number;
 }
@@ -44,6 +44,7 @@ interface YoutubeIntegration {
   fromEnv: boolean;
   clientId: string | null;
   redirectUri: string;
+  audited: boolean;
 }
 
 /** Abre o login do Google (no app desktop vai pro navegador do sistema) e fica recarregando a lista de contas. */
@@ -58,6 +59,29 @@ export async function startYoutubeOAuth(onConnected: () => void, reconnect = fal
   }, 3000);
 }
 
+interface MetaIntegration {
+  configured: boolean;
+  fromEnv: boolean;
+  appId: string | null;
+  configId: string | null;
+  redirectUri: string;
+  scopes: string[];
+}
+
+/** Abre o login da Meta (Facebook) no navegador e fica recarregando a lista: Páginas e IGs autorizados aparecem sozinhos. */
+export async function startMetaOAuth(onConnected: () => void, reconnect = false) {
+  const { url } = await api<{ url: string }>(`/api/v1/social-accounts/oauth/meta${reconnect ? "?reconnect=1" : ""}`);
+  window.open(url, "_blank", "noopener");
+  toast.info("Finalize o login do Facebook no navegador e marque a Página e o Instagram do canal. As contas aparecem aqui sozinhas.");
+  let n = 0;
+  const t = setInterval(() => {
+    onConnected();
+    if (++n >= 40) clearInterval(t); // ~2 min
+  }, 3000);
+}
+
+type Mode = "google" | "meta" | "uploadpost" | "simulated";
+
 export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", onConnected }: { open: boolean; onOpenChange: (v: boolean) => void; purpose?: "publish" | "championship"; onConnected: () => void }) {
   const [platform, setPlatform] = useState<PlatformId>("youtube");
   const [handle, setHandle] = useState("");
@@ -69,9 +93,15 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
   const [up, setUp] = useState<UploadPostIntegration | null>(null);
   const [upKey, setUpKey] = useState("");
   const [upCfgOpen, setUpCfgOpen] = useState(false);
-  const [simulated, setSimulated] = useState(false);
-  const oauth = purpose === "publish" && platform === "youtube";
-  const viaUploadPost = purpose === "publish" && platform !== "youtube" && !simulated;
+  const [meta, setMeta] = useState<MetaIntegration | null>(null);
+  const [metaCfgOpen, setMetaCfgOpen] = useState(false);
+  const [appId, setAppId] = useState("");
+  const [appSecret, setAppSecret] = useState("");
+  const [configId, setConfigId] = useState("");
+  const [alt, setAlt] = useState<"uploadpost" | "simulated" | null>(null);
+  // YouTube → Google; Instagram/Facebook → Meta (Graph API); TikTok → Upload-Post (quebra-galho, 10 envios/mês no grátis)
+  const mode: Mode = purpose !== "publish" ? "simulated" : (alt ?? (platform === "youtube" ? "google" : platform === "tiktok" ? "uploadpost" : "meta"));
+  const platforms = purpose === "publish" ? PLATFORMS : PLATFORMS.filter((p) => p.id !== "facebook");
 
   useEffect(() => {
     if (open) {
@@ -79,22 +109,20 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
       setPlatform("youtube");
       setCfgOpen(false);
       setUpCfgOpen(false);
-      setSimulated(false);
+      setMetaCfgOpen(false);
+      setAlt(null);
       if (purpose === "publish") {
         api<YoutubeIntegration>("/api/v1/integrations/youtube").then(setYt).catch(() => setYt(null));
         api<UploadPostIntegration>("/api/v1/integrations/uploadpost").then(setUp).catch(() => setUp(null));
+        api<MetaIntegration>("/api/v1/integrations/meta").then(setMeta).catch(() => setMeta(null));
       }
     }
   }, [open, purpose]);
 
-  async function connect() {
-    if (!handle.trim()) return toast.error("Informe o @ da conta");
+  async function run(fn: () => Promise<unknown>) {
     setLoading(true);
     try {
-      await api("/api/v1/social-accounts", { method: "POST", json: { platform, handle: handle.trim(), purpose } });
-      toast.success(purpose === "publish" ? "Conta conectada (simulação)" : "Conta conectada");
-      onOpenChange(false);
-      onConnected();
+      await fn();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -102,63 +130,61 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
     }
   }
 
-  async function saveConfig() {
-    setLoading(true);
-    try {
+  function connect() {
+    if (!handle.trim()) return toast.error("Informe o @ da conta");
+    return run(async () => {
+      await api("/api/v1/social-accounts", { method: "POST", json: { platform, handle: handle.trim(), purpose } });
+      toast.success(purpose === "publish" ? "Conta conectada (simulação)" : "Conta conectada");
+      onOpenChange(false);
+      onConnected();
+    });
+  }
+
+  const saveConfig = () =>
+    run(async () => {
       await api("/api/v1/integrations/youtube", { method: "PUT", json: { clientId: clientId.trim(), clientSecret: clientSecret.trim() } });
       setYt(await api<YoutubeIntegration>("/api/v1/integrations/youtube"));
       setCfgOpen(false);
       setClientId("");
       setClientSecret("");
       toast.success("Credenciais do Google salvas");
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
+    });
 
-  async function saveUpKey() {
-    setLoading(true);
-    try {
+  const setAudited = (audited: boolean) =>
+    run(async () => {
+      await api("/api/v1/integrations/youtube", { method: "PATCH", json: { audited } });
+      setYt(await api<YoutubeIntegration>("/api/v1/integrations/youtube"));
+    });
+
+  const saveMeta = () =>
+    run(async () => {
+      await api("/api/v1/integrations/meta", { method: "PUT", json: { appId: appId.trim(), appSecret: appSecret.trim(), configId: configId.trim() } });
+      setMeta(await api<MetaIntegration>("/api/v1/integrations/meta"));
+      setMetaCfgOpen(false);
+      setAppId("");
+      setAppSecret("");
+      setConfigId("");
+      toast.success("Credenciais da Meta salvas");
+    });
+
+  const saveUpKey = () =>
+    run(async () => {
       await api("/api/v1/integrations/uploadpost", { method: "PUT", json: { apiKey: upKey.trim() } });
       setUp(await api<UploadPostIntegration>("/api/v1/integrations/uploadpost"));
       setUpCfgOpen(false);
       setUpKey("");
       toast.success("API key do Upload-Post salva");
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
+    });
 
-  async function connectUploadPost() {
-    setLoading(true);
-    try {
-      await startUploadPostConnect(onConnected);
+  const connectVia = (start: (cb: () => void) => Promise<void>) =>
+    run(async () => {
+      await start(onConnected);
       onOpenChange(false);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
+    });
 
-  async function connectGoogle() {
-    setLoading(true);
-    try {
-      await startYoutubeOAuth(onConnected);
-      onOpenChange(false);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const showConfig = oauth && (cfgOpen || !yt?.configured);
-  const showUpConfig = viaUploadPost && (upCfgOpen || !up?.configured);
+  const showConfig = mode === "google" && (cfgOpen || !yt?.configured);
+  const showUpConfig = mode === "uploadpost" && (upCfgOpen || !up?.configured);
+  const showMetaConfig = mode === "meta" && (metaCfgOpen || !meta?.configured);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -170,9 +196,17 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
         <div className="space-y-4">
           <div>
             <Label>Rede social</Label>
-            <div className="mt-1 grid grid-cols-3 gap-2">
-              {PLATFORMS.map((p) => (
-                <button key={p.id} type="button" onClick={() => setPlatform(p.id)} className={cn("flex flex-col items-center gap-2 rounded-xl border p-3 text-sm font-semibold transition", platform === p.id ? "border-primary bg-primary/10" : "hover:bg-secondary/60")}>
+            <div className={cn("mt-1 grid gap-2", platforms.length > 3 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
+              {platforms.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setPlatform(p.id);
+                    setAlt(null);
+                  }}
+                  className={cn("flex flex-col items-center gap-2 rounded-xl border p-3 text-sm font-semibold transition", platform === p.id ? "border-primary bg-primary/10" : "hover:bg-secondary/60")}
+                >
                   <PlatformDot platform={p.id} size="lg" />
                   {p.name}
                   <span className="text-[10px] font-normal text-muted-foreground">{p.hint}</span>
@@ -180,10 +214,24 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
               ))}
             </div>
           </div>
-          {viaUploadPost ? (
-            <UploadPostBox up={up} showConfig={showUpConfig} onEditConfig={() => setUpCfgOpen(true)} apiKey={upKey} setApiKey={setUpKey} onSimulated={() => setSimulated(true)} />
-          ) : oauth ? (
-            <YoutubeOAuthBox yt={yt} showConfig={showConfig} onEditConfig={() => setCfgOpen(true)} clientId={clientId} setClientId={setClientId} clientSecret={clientSecret} setClientSecret={setClientSecret} />
+          {mode === "uploadpost" ? (
+            <UploadPostBox up={up} showConfig={showUpConfig} onEditConfig={() => setUpCfgOpen(true)} apiKey={upKey} setApiKey={setUpKey} onSimulated={() => setAlt("simulated")} />
+          ) : mode === "google" ? (
+            <YoutubeOAuthBox yt={yt} showConfig={showConfig} onEditConfig={() => setCfgOpen(true)} clientId={clientId} setClientId={setClientId} clientSecret={clientSecret} setClientSecret={setClientSecret} onAudited={setAudited} />
+          ) : mode === "meta" ? (
+            <>
+              <MetaBox meta={meta} showConfig={showMetaConfig} onEditConfig={() => setMetaCfgOpen(true)} appId={appId} setAppId={setAppId} appSecret={appSecret} setAppSecret={setAppSecret} configId={configId} setConfigId={setConfigId} />
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {platform === "instagram" ? (
+                  <button type="button" className="text-[11px] text-muted-foreground underline hover:text-foreground" onClick={() => setAlt("uploadpost")}>
+                    Usar o Upload-Post (grátis: 10 envios/mês)
+                  </button>
+                ) : null}
+                <button type="button" className="text-[11px] text-muted-foreground underline hover:text-foreground" onClick={() => setAlt("simulated")}>
+                  Só registrar o @ (simulado, não publica)
+                </button>
+              </div>
+            </>
           ) : (
             <>
               <div>
@@ -209,17 +257,27 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          {viaUploadPost ? (
+          {mode === "uploadpost" ? (
             showUpConfig ? (
               <Button onClick={saveUpKey} loading={loading} disabled={upKey.trim().length < 20}>
                 <KeyRound /> Salvar API key
               </Button>
             ) : (
-              <Button onClick={connectUploadPost} loading={loading} disabled={!up}>
-                <ExternalLink /> Conectar TikTok / Instagram
+              <Button onClick={() => connectVia(startUploadPostConnect)} loading={loading} disabled={!up}>
+                <ExternalLink /> Conectar no Upload-Post
               </Button>
             )
-          ) : !oauth ? (
+          ) : mode === "meta" ? (
+            showMetaConfig ? (
+              <Button onClick={saveMeta} loading={loading} disabled={!appId.trim() || !appSecret.trim()}>
+                <KeyRound /> Salvar credenciais
+              </Button>
+            ) : (
+              <Button onClick={() => connectVia(startMetaOAuth)} loading={loading} disabled={!meta}>
+                <ExternalLink /> Entrar com Facebook
+              </Button>
+            )
+          ) : mode === "simulated" ? (
             <Button onClick={connect} loading={loading}>
               Conectar {PLATFORMS.find((p) => p.id === platform)?.name}
             </Button>
@@ -228,7 +286,7 @@ export function ConnectAccountDialog({ open, onOpenChange, purpose = "publish", 
               <KeyRound /> Salvar credenciais
             </Button>
           ) : (
-            <Button onClick={connectGoogle} loading={loading} disabled={!yt}>
+            <Button onClick={() => connectVia(startYoutubeOAuth)} loading={loading} disabled={!yt}>
               <ExternalLink /> Entrar com Google
             </Button>
           )}
@@ -246,6 +304,7 @@ function YoutubeOAuthBox(p: {
   setClientId: (v: string) => void;
   clientSecret: string;
   setClientSecret: (v: string) => void;
+  onAudited: (v: boolean) => void;
 }) {
   const { yt } = p;
   if (!yt) return <p className="text-xs text-muted-foreground">Carregando integração…</p>;
@@ -258,6 +317,21 @@ function YoutubeOAuthBox(p: {
             <span className="font-semibold text-foreground">Publicação real.</span> O login do Google abre no navegador. Depois de autorizar, os cortes agendados nesse canal sobem sozinhos como Shorts na hora marcada (com o Cortix aberto).
           </p>
         </div>
+        {!yt.audited ? (
+          <div className="flex gap-3 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3 text-xs text-muted-foreground">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+            <p>
+              <span className="font-semibold text-warning">Os vídeos sobem PRIVADOS</span> até o Google aprovar a auditoria do seu app (sem ela o YouTube trava todo upload pela API como privado). Cada post publicado mostra o link do YouTube Studio: abra e troque pra <b>Público</b>.{" "}
+              <button type="button" className="underline hover:text-foreground" onClick={() => p.onAudited(true)}>
+                Meu app já foi aprovado
+              </button>
+            </p>
+          </div>
+        ) : (
+          <button type="button" className="text-[11px] text-muted-foreground underline hover:text-foreground" onClick={() => p.onAudited(false)}>
+            App auditado: uploads públicos. Desfazer
+          </button>
+        )}
         {!yt.fromEnv ? (
           <button type="button" className="text-[11px] text-muted-foreground underline hover:text-foreground" onClick={p.onEditConfig}>
             Trocar credenciais do Google ({yt.clientId})
@@ -278,7 +352,7 @@ function YoutubeOAuthBox(p: {
             </a>
             , crie um projeto e ative a <b>YouTube Data API v3</b>.
           </li>
-          <li>Em &quot;Tela de consentimento OAuth&quot;: tipo Externo, e seu e-mail em Usuários de teste.</li>
+          <li>Em &quot;Tela de consentimento OAuth&quot;: tipo Externo, e seu e-mail em Usuários de teste. Depois, envie o app pra verificação (sem ela os uploads saem privados).</li>
           <li>
             Em Credenciais → Criar ID do cliente OAuth → tipo <b>App para computador</b>.
           </li>
@@ -312,7 +386,7 @@ function UploadPostBox(p: { up: UploadPostIntegration | null; showConfig: boolea
         <div className="flex gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3 text-xs text-muted-foreground">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" />
           <p>
-            <span className="font-semibold text-foreground">Publicação real via Upload-Post.</span> Abre a página deles no navegador: conecte o TikTok e/ou o Instagram lá e volte. Os cortes agendados sobem sozinhos na hora marcada (com o Cortix aberto).
+            <span className="font-semibold text-foreground">Publicação real via Upload-Post.</span> Quebra-galho: o plano grátis dá só 10 envios/mês somando todas as redes. Abre a página deles no navegador: conecte o TikTok lá e volte. Os cortes agendados sobem sozinhos na hora marcada (com o Cortix aberto).
           </p>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -346,6 +420,73 @@ function UploadPostBox(p: { up: UploadPostIntegration | null; showConfig: boolea
         <Input value={p.apiKey} onChange={(e) => p.setApiKey(e.target.value)} placeholder="eyJhbGciOi…" type="password" className="mt-1" />
       </div>
       {simulatedLink}
+    </div>
+  );
+}
+
+function MetaBox(p: {
+  meta: MetaIntegration | null;
+  showConfig: boolean;
+  onEditConfig: () => void;
+  appId: string;
+  setAppId: (v: string) => void;
+  appSecret: string;
+  setAppSecret: (v: string) => void;
+  configId: string;
+  setConfigId: (v: string) => void;
+}) {
+  const { meta } = p;
+  if (!meta) return <p className="text-xs text-muted-foreground">Carregando integração…</p>;
+  if (!p.showConfig) {
+    return (
+      <div className="space-y-2">
+        <div className="flex gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3 text-xs text-muted-foreground">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" />
+          <p>
+            <span className="font-semibold text-foreground">Publicação real pela Meta (grátis).</span> O login do Facebook abre no navegador: marque só a <b>Página</b> e o <b>Instagram profissional</b> deste canal. Reels e carrosséis agendados sobem sozinhos na hora marcada (com o Cortix aberto).
+          </p>
+        </div>
+        {!meta.fromEnv ? (
+          <button type="button" className="text-[11px] text-muted-foreground underline hover:text-foreground" onClick={p.onEditConfig}>
+            Trocar credenciais da Meta (App ID {meta.appId})
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border px-4 py-3 text-xs text-muted-foreground">
+        <p className="font-semibold text-foreground">Configuração única (grátis)</p>
+        <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+          <li>
+            Em{" "}
+            <a className="text-primary underline" href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer">
+              developers.facebook.com
+            </a>{" "}
+            → Criar app → tipo <b>Business</b>.
+          </li>
+          <li>
+            Adicione <b>Instagram Graph API</b> e <b>Facebook Login for Business</b>. O Instagram precisa ser conta profissional ligada à Página.
+          </li>
+          <li>Em Facebook Login → Configurações, cole o redirect abaixo em &quot;URIs de redirecionamento do OAuth válidos&quot;.</li>
+          <li>Em Configurações → Básico, copie o App ID e a Chave secreta. Como admin do app, no modo desenvolvimento você publica nas suas Páginas sem App Review.</li>
+        </ol>
+        <p className="mt-2 break-all">Redirect: {meta.redirectUri}</p>
+        <p className="mt-1 break-all">Permissões: {meta.scopes.join(", ")}</p>
+      </div>
+      <div>
+        <Label>App ID</Label>
+        <Input value={p.appId} onChange={(e) => p.setAppId(e.target.value)} placeholder="1234567890123456" className="mt-1" inputMode="numeric" />
+      </div>
+      <div>
+        <Label>App Secret (chave secreta)</Label>
+        <Input value={p.appSecret} onChange={(e) => p.setAppSecret(e.target.value)} placeholder="32 caracteres" type="password" className="mt-1" autoComplete="off" />
+      </div>
+      <div>
+        <Label>Configuration ID (opcional)</Label>
+        <Input value={p.configId} onChange={(e) => p.setConfigId(e.target.value)} placeholder="Só se o Login for Business pedir uma configuração" className="mt-1" inputMode="numeric" />
+      </div>
     </div>
   );
 }

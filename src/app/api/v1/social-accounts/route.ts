@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SOCIAL_PLATFORMS } from "@/lib/social/platforms";
 import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
 import { newId } from "@/lib/ids";
@@ -6,7 +7,7 @@ import { isSubscriber } from "@/lib/auth";
 import { getPlan } from "@/lib/plans";
 
 const createSchema = z.object({
-  platform: z.enum(["tiktok", "instagram", "youtube"]),
+  platform: z.enum(SOCIAL_PLATFORMS),
   handle: z.string().trim().min(1, "Informe o @ da conta").max(80),
   purpose: z.enum(["publish", "championship"]).default("publish"),
   channel: z.string().trim().toLowerCase().max(40).nullable().optional(),

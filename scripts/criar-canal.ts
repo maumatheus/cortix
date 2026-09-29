@@ -1,6 +1,10 @@
 /**
- * Cria (ou atualiza) o usuário do Cortix de um canal do estúdio: 1 usuário por canal, cada um
- * com o próprio perfil no Upload-Post (TikTok/Instagram/YouTube) e o próprio token do MCP.
+ * Cria (ou atualiza) o usuário do Cortix de um canal do estúdio: 1 usuário por canal (plano viral, 6 contas),
+ * cada um com as próprias contas e o próprio token do MCP. Depois, logado como o canal, em Redes Sociais:
+ *   - YouTube → "Entrar com Google" escolhendo a conta de marca do canal (sobe PRIVADO até a auditoria do Google);
+ *   - Instagram/Facebook → "Entrar com Facebook" marcando SÓ a Página e o IG deste canal (Graph API, grátis);
+ *   - TikTok → Upload-Post (quebra-galho: 10 envios/mês no grátis).
+ * As credenciais dos apps (Google Client ID/Secret, Meta App ID/Secret) são da instalação e valem pros dois canais.
  *
  * Uso: npx tsx scripts/criar-canal.ts <slug> <senha> [canal-de-regra]
  *   npx tsx scripts/criar-canal.ts fase-secreta 'senha-forte'

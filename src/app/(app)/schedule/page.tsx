@@ -256,6 +256,7 @@ function ScheduleInner() {
                     </a>
                   ) : null}
                   {detail.status === "failed" && detail.error ? <p className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs text-destructive">{detail.error}</p> : null}
+                  {detail.status === "published" && detail.error ? <p className="mt-2 rounded-lg border border-warning/40 bg-warning/5 px-2 py-1.5 text-xs text-warning">⚠️ {detail.error}</p> : null}
                   {detail.short ? (
                     <Link href={`/projects/${detail.short.projectId}`} className="mt-2 inline-block text-xs text-primary hover:underline">
                       Abrir projeto {detail.short.project.title} ↗
@@ -313,7 +314,10 @@ function PostRow({ p, onOpen }: { p: ScheduledPostItem; onOpen: () => void }) {
         <p className={cn("truncate text-sm font-semibold", p.status === "canceled" && "line-through opacity-60")}>{p.short?.title ?? p.caption ?? "Post"}</p>
         <p className="truncate text-xs text-muted-foreground">{p.socialAccount?.handle ?? "sem conta vinculada"}{p.short ? ` · ${p.short.project.title}` : ""}</p>
       </div>
-      <span className={cn("eyebrow !text-[10px]", s.cls)}>{s.label}</span>
+      <span className={cn("eyebrow !text-[10px]", s.cls)}>
+        {s.label}
+        {p.status === "published" && p.error ? <span className="ml-1 text-warning" title={p.error}>⚠ ação pendente</span> : null}
+      </span>
     </button>
   );
 }

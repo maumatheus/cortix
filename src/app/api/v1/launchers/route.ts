@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SOCIAL_PLATFORMS } from "@/lib/social/platforms";
 import { db } from "@/lib/db";
 import { ok, readJson, withUser } from "@/lib/api";
 import { newId } from "@/lib/ids";
@@ -7,7 +8,7 @@ import { launcherInclude, serializeLauncher } from "@/lib/launchers";
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "Informe o nome do launcher").max(80),
-  platforms: z.array(z.enum(["tiktok", "instagram", "youtube"])).min(1, "Escolha pelo menos uma rede"),
+  platforms: z.array(z.enum(SOCIAL_PLATFORMS)).min(1, "Escolha pelo menos uma rede"),
   times: z.array(z.string().regex(/^\d{2}:\d{2}$/, "Horário inválido (use HH:MM)")).min(1, "Adicione pelo menos um horário").max(12),
 });
 

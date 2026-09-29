@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PlatformDot, platformInfo } from "@/components/shared/platform";
-import { ConnectAccountDialog, startUploadPostConnect, startYoutubeOAuth, type SocialAccountItem } from "@/components/social/connect-account-dialog";
+import { ConnectAccountDialog, startMetaOAuth, startUploadPostConnect, startYoutubeOAuth, type SocialAccountItem } from "@/components/social/connect-account-dialog";
 
 const SEEN_KEY = "cf_social_purpose_seen";
 
@@ -21,6 +21,7 @@ export default function SocialMediaPage() {
   const { data, loading, reload } = useFetch<{ data: SocialAccountItem[]; limit: number; plan: string | null; isSubscriber: boolean }>("/api/v1/social-accounts?purpose=publish");
   const [purposeOpen, setPurposeOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
+  const { data: yt } = useFetch<{ configured: boolean; audited: boolean }>("/api/v1/integrations/youtube");
 
   useEffect(() => {
     try {
@@ -109,7 +110,7 @@ export default function SocialMediaPage() {
             ))}
           </div>
         ) : accounts.length === 0 ? (
-          <EmptyState icon={<Share2 />} title="Nenhuma conta conectada" description="Conecte YouTube, Instagram ou TikTok pra agendar e publicar seus cortes." action={<Button onClick={() => setConnectOpen(true)}><Plus /> Conectar conta</Button>} />
+          <EmptyState icon={<Share2 />} title="Nenhuma conta conectada" description="Conecte YouTube, Instagram, Facebook ou TikTok pra agendar e publicar seus cortes." action={<Button onClick={() => setConnectOpen(true)}><Plus /> Conectar conta</Button>} />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {accounts.map((a) => (
@@ -120,10 +121,17 @@ export default function SocialMediaPage() {
                   <p className="text-xs text-muted-foreground">
                     {platformInfo(a.platform).name} · conectada há {timeAgo(a.createdAt)}
                   </p>
-                  {a.connection === "oauth" || a.connection === "uploadpost" ? (
-                    <p className="mt-1 flex items-center gap-1 text-[11px] text-success">
-                      <span className="size-1.5 rounded-full bg-success" /> Publicação real{a.connection === "uploadpost" ? " (Upload-Post)" : ""} · {a.postsCount ?? 0} posts
-                    </p>
+                  {a.connection === "oauth" || a.connection === "uploadpost" || a.connection === "meta" ? (
+                    <>
+                      <p className="mt-1 flex items-center gap-1 text-[11px] text-success">
+                        <span className="size-1.5 rounded-full bg-success" /> Publicação real{a.connection === "uploadpost" ? " (Upload-Post)" : a.connection === "meta" ? " (Meta)" : ""} · {a.postsCount ?? 0} posts
+                      </p>
+                      {a.connection === "oauth" && a.platform === "youtube" && yt && !yt.audited ? (
+                        <p className="mt-0.5 text-[11px] text-warning" title="Sem a auditoria do app Google o YouTube trava uploads pela API como privados. Abra o YouTube Studio e mude pra Público.">
+                          ⚠ Sobe privado até a auditoria do Google
+                        </p>
+                      ) : null}
+                    </>
                   ) : (
                     <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground" title="Na hora marcada o post só é marcado como publicado, nada sobe pra rede.">
                       <span className="size-1.5 rounded-full bg-muted-foreground" /> Simulada · {a.postsCount ?? 0} posts
@@ -135,6 +143,14 @@ export default function SocialMediaPage() {
                     className="rounded-lg border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
                     title={a.connection === "oauth" ? "Reconectar com Google" : "Conectar de verdade com Google"}
                     onClick={() => startYoutubeOAuth(reload, true).catch((e) => toast.error((e as Error).message))}
+                  >
+                    <RefreshCw className="size-4" />
+                  </button>
+                ) : a.platform === "facebook" || (a.platform === "instagram" && a.connection !== "uploadpost") ? (
+                  <button
+                    className="rounded-lg border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    title={a.connection === "meta" ? "Reconectar com Facebook" : "Conectar de verdade com Facebook (Meta)"}
+                    onClick={() => startMetaOAuth(reload, true).catch((e) => toast.error((e as Error).message))}
                   >
                     <RefreshCw className="size-4" />
                   </button>

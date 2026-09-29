@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SOCIAL_PLATFORMS } from "@/lib/social/platforms";
 import { db } from "./db";
 import { newId } from "./ids";
 import { checkPostMeta, postMetaSchema } from "./post-meta";
@@ -8,7 +9,7 @@ import { accountKey, resolveChannel, validateAccountSchedule, validateChannelSch
 export const createPostSchema = z.object({
   shortId: z.string().optional().nullable(),
   socialAccountId: z.string().optional().nullable(),
-  platform: z.enum(["tiktok", "instagram", "youtube"]),
+  platform: z.enum(SOCIAL_PLATFORMS),
   caption: z.string().max(2200).default(""),
   scheduledAt: z.string().min(1, "Informe a data e hora"),
   meta: postMetaSchema.optional(),
@@ -51,8 +52,8 @@ export async function createScheduledPost(user: { id: string; channel?: string |
   const metaErr = checkPostMeta(body.meta);
   if (metaErr) throw new ScheduleError(metaErr, 422);
   if (body.meta?.carousel) {
-    if (body.platform === "youtube") throw new ScheduleError("Carrossel só no Instagram ou no TikTok", 422);
-    if (account && account.connection !== "uploadpost") throw new ScheduleError("Carrossel só sai por conta conectada via Upload-Post", 422);
+    if (body.platform === "youtube") throw new ScheduleError("Carrossel só no Instagram, no Facebook ou no TikTok", 422);
+    if (account && account.connection !== "uploadpost" && account.connection !== "meta") throw new ScheduleError("Carrossel só sai por conta conectada pela Meta ou via Upload-Post", 422);
   } else if (account && account.connection !== "simulated" && !body.shortId && !body.meta?.videoPath) {
     throw new ScheduleError("Informe o corte (shortId), um vídeo local (meta.videoPath) ou um carrossel (meta.carousel)", 422);
   }

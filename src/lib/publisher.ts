@@ -2,6 +2,8 @@ import fs from "node:fs";
 import { db } from "./db";
 import { uploadYoutubeVideo, youtubeAccessToken } from "./social/youtube";
 import { startUploadPhotos, startUploadPost, uploadPostStatus } from "./social/uploadpost";
+import { META_PENDING_PREFIX, metaPendingStatus, publishMetaCarousel, publishMetaVideo } from "./social/meta";
+import { youtubeAudited } from "./social/config";
 import { channelBlackout, resolveChannel, validateChannelSchedule } from "./schedule-rules";
 import { parsePostMeta, youtubeTexts } from "./post-meta";
 
@@ -10,10 +12,14 @@ export { youtubeTexts }; // compat: smoke-publisher importa daqui
 /** Prefixo do externalId enquanto o envio assíncrono (Upload-Post) ainda está rolando lá. */
 export const PENDING_PREFIX = "req:";
 
+/** Vai no `error` do post publicado enquanto o app do Google não passa na auditoria da API do YouTube. */
+export const YOUTUBE_PRIVATE_WARNING = "subiu PRIVADO no YouTube (app do Google ainda sem auditoria). Abra o YouTube Studio e mude pra Público";
+
 /**
  * Publicador: pega os posts cujo horário já passou e publica.
  * - Conta conectada por OAuth (YouTube) → upload de verdade pela API oficial.
- * - Conta conectada via Upload-Post (TikTok/Instagram) → envio assíncrono; as rodadas seguintes consultam o status.
+ * - Conta conectada pela Meta (Instagram/Facebook, Graph API) → Reels/carrossel; o container do IG é assíncrono.
+ * - Conta conectada via Upload-Post (quebra-galho do TikTok) → envio assíncrono; as rodadas seguintes consultam o status.
  * - Conta simulada / sem conta → só marca como publicado (comportamento antigo, sem falar com a rede).
  * Também dá baixa nos itens de launcher vencidos.
  */
@@ -44,7 +50,7 @@ async function rodada(userId: string | undefined, now: Date) {
       blocked++;
       continue;
     }
-    const real = post.socialAccount?.connection === "oauth" || post.socialAccount?.connection === "uploadpost";
+    const real = ["oauth", "uploadpost", "meta"].includes(post.socialAccount?.connection ?? "");
     if (!real) {
       await db.scheduledPost.update({ where: { id: post.id }, data: { status: "published", publishedAt: now } });
       if (post.shortId) await db.short.update({ where: { id: post.shortId }, data: { isPublished: true, isScheduled: false } }).catch(() => {});
@@ -57,8 +63,9 @@ async function rodada(userId: string | undefined, now: Date) {
     try {
       const res = await publishReal(post);
       if ("requestId" in res) {
-        // ainda subindo lá: fica em "publishing" até o status fechar
-        await db.scheduledPost.update({ where: { id: post.id }, data: { externalId: PENDING_PREFIX + res.requestId, error: null } });
+        // ainda subindo lá: fica em "publishing" até o status fechar (o da Meta já vem com o prefixo "ig:")
+        const externalId = res.requestId.startsWith(META_PENDING_PREFIX) ? res.requestId : PENDING_PREFIX + res.requestId;
+        await db.scheduledPost.update({ where: { id: post.id }, data: { externalId, error: null } });
         continue;
       }
       await markPublished(post.id, post.shortId, res.id, res.url, "warning" in res ? res.warning : null);
@@ -73,12 +80,14 @@ async function rodada(userId: string | undefined, now: Date) {
 
   // envios assíncronos em andamento
   const pending = await db.scheduledPost.findMany({
-    where: { status: "publishing", externalId: { startsWith: PENDING_PREFIX }, ...(userId ? { userId } : {}) },
-    select: { id: true, shortId: true, platform: true, externalId: true, scheduledAt: true },
+    where: { status: "publishing", OR: [{ externalId: { startsWith: PENDING_PREFIX } }, { externalId: { startsWith: META_PENDING_PREFIX } }], ...(userId ? { userId } : {}) },
+    select: { id: true, shortId: true, platform: true, externalId: true, scheduledAt: true, socialAccountId: true },
   });
   for (const p of pending) {
+    const viaMeta = p.externalId!.startsWith(META_PENDING_PREFIX);
     try {
-      const st = await uploadPostStatus(p.externalId!.slice(PENDING_PREFIX.length), p.platform);
+      if (viaMeta && !p.socialAccountId) throw new Error("conta desconectada");
+      const st = viaMeta ? await metaPendingStatus(p.socialAccountId!, p.externalId!) : await uploadPostStatus(p.externalId!.slice(PENDING_PREFIX.length), p.platform);
       if (st.state === "done") {
         await markPublished(p.id, p.shortId, st.id, st.url);
         published++;
@@ -86,7 +95,7 @@ async function rodada(userId: string | undefined, now: Date) {
         await db.scheduledPost.update({ where: { id: p.id }, data: { status: "failed", error: st.error.slice(0, 500) } });
         failed++;
       } else if (Date.now() - p.scheduledAt.getTime() > 6 * 3600_000) {
-        await db.scheduledPost.update({ where: { id: p.id }, data: { status: "failed", error: "O Upload-Post não confirmou a publicação em 6 horas. Confira no painel deles." } });
+        await db.scheduledPost.update({ where: { id: p.id }, data: { status: "failed", error: viaMeta ? "O Instagram não terminou de processar a mídia em 6 horas. Reagende." : "O Upload-Post não confirmou a publicação em 6 horas. Confira no painel deles." } });
         failed++;
       }
     } catch (e) {
@@ -123,11 +132,12 @@ async function publishReal(post: {
   const yt = meta.youtube;
   const acc = post.socialAccount!;
 
-  // carrossel de fotos: só pelo Upload-Post
+  // carrossel de fotos: Meta (IG/FB) ou Upload-Post
   if (meta.carousel) {
-    if (acc.connection !== "uploadpost" || !acc.externalId) throw new Error("Carrossel só sai por conta conectada via Upload-Post.");
     const missing = meta.carousel.images.find((p) => !fs.existsSync(p));
     if (missing) throw new Error(`Imagem do carrossel sumiu: ${missing}`);
+    if (acc.connection === "meta") return publishMetaCarousel(acc.id, { imagePaths: meta.carousel.images, caption: post.caption });
+    if (acc.connection !== "uploadpost" || !acc.externalId) throw new Error("Carrossel só sai por conta conectada pela Meta ou via Upload-Post.");
     const r = await startUploadPhotos({ profile: acc.externalId, platform: acc.platform, imagePaths: meta.carousel.images, caption: post.caption, title: meta.carousel.title ?? "" });
     return r.done ? { id: r.id, url: r.url } : { requestId: r.requestId };
   }
@@ -149,6 +159,7 @@ async function publishReal(post: {
     fallbackTitle = short.title;
   }
 
+  if (acc.connection === "meta") return publishMetaVideo(acc.id, { filePath, caption: post.caption });
   if (acc.connection === "uploadpost") {
     if (!acc.externalId) throw new Error("Conta sem perfil do Upload-Post. Reconecte a conta.");
     const r = await startUploadPost({ profile: acc.externalId, platform: acc.platform, filePath, caption: post.caption, title: fallbackTitle, youtube: yt });
@@ -158,18 +169,23 @@ async function publishReal(post: {
     case "youtube": {
       const token = await youtubeAccessToken(acc.id);
       const { title, description, tags } = youtubeTexts(post.caption, fallbackTitle, yt);
-      return uploadYoutubeVideo(token, {
+      // sem a auditoria do app Google o YouTube trava o vídeo como privado de qualquer jeito: sobe privado e avisa
+      const audited = youtubeAudited();
+      const r = await uploadYoutubeVideo(token, {
         filePath,
         title,
         description,
         tags,
         categoryId: yt?.categoryId,
-        publishAt: yt?.publishAt,
-        privacy: yt?.privacy,
+        publishAt: audited ? yt?.publishAt : undefined,
+        privacy: audited ? yt?.privacy : "private",
         madeForKids: yt?.madeForKids ?? false,
         thumbnailPath: yt?.thumbnailPath,
         playlistId: yt?.playlistId,
       });
+      if (audited) return r;
+      const aviso = `${YOUTUBE_PRIVATE_WARNING}: https://studio.youtube.com/video/${r.id}/edit`;
+      return { ...r, warning: [aviso, r.warning].filter(Boolean).join("; ") };
     }
     default:
       throw new Error(`Publicação real no ${acc.platform} ainda não está disponível`);
