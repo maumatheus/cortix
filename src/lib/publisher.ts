@@ -3,6 +3,7 @@ import { db } from "./db";
 import { uploadYoutubeVideo, youtubeAccessToken } from "./social/youtube";
 import { startUploadPost, uploadPostStatus } from "./social/uploadpost";
 import { channelBlackout, resolveChannel, validateChannelSchedule } from "./schedule-rules";
+import { parsePostMeta, type YoutubeMeta } from "./post-meta";
 
 /** Prefixo do externalId enquanto o envio assíncrono (Upload-Post) ainda está rolando lá. */
 export const PENDING_PREFIX = "req:";
@@ -25,7 +26,7 @@ export function publishDuePosts(userId?: string, opts: { now?: Date } = {}) {
 async function rodada(userId: string | undefined, now: Date) {
   const due = await db.scheduledPost.findMany({
     where: { status: "scheduled", scheduledAt: { lte: now }, ...(userId ? { userId } : {}) },
-    select: { id: true, shortId: true, platform: true, caption: true, user: { select: { channel: true } }, socialAccount: { select: { id: true, connection: true, platform: true, externalId: true, channel: true } } },
+    select: { id: true, shortId: true, platform: true, caption: true, meta: true, user: { select: { channel: true } }, socialAccount: { select: { id: true, connection: true, platform: true, externalId: true, channel: true } } },
   });
 
   let published = 0;
@@ -58,7 +59,7 @@ async function rodada(userId: string | undefined, now: Date) {
         await db.scheduledPost.update({ where: { id: post.id }, data: { externalId: PENDING_PREFIX + res.requestId, error: null } });
         continue;
       }
-      await markPublished(post.id, post.shortId, res.id, res.url);
+      await markPublished(post.id, post.shortId, res.id, res.url, "warning" in res ? res.warning : null);
       published++;
     } catch (e) {
       const msg = (e as Error).message || "Erro desconhecido";
@@ -102,8 +103,10 @@ async function rodada(userId: string | undefined, now: Date) {
   return { posts: published, failed, blocked, launcherItems: dueItems.length };
 }
 
-async function markPublished(id: string, shortId: string | null, externalId: string | null, externalUrl: string | null) {
-  await db.scheduledPost.update({ where: { id }, data: { status: "published", publishedAt: new Date(), externalId, externalUrl, error: null } });
+/** `warning`: publicou, mas algo acessório falhou (ex.: thumbnail); fica em `error` pra quem consultar o status. */
+async function markPublished(id: string, shortId: string | null, externalId: string | null, externalUrl: string | null, warning: string | null = null) {
+  const error = warning ? `Publicado com aviso: ${warning}`.slice(0, 500) : null;
+  await db.scheduledPost.update({ where: { id }, data: { status: "published", publishedAt: new Date(), externalId, externalUrl, error } });
   if (shortId) await db.short.update({ where: { id: shortId }, data: { isPublished: true, isScheduled: false } }).catch(() => {});
 }
 
@@ -111,37 +114,53 @@ async function publishReal(post: {
   shortId: string | null;
   platform: string;
   caption: string;
+  meta: string | null;
   socialAccount: { id: string; platform: string; connection: string; externalId: string | null } | null;
-}): Promise<{ id: string | null; url: string | null } | { requestId: string }> {
+}): Promise<{ id: string | null; url: string | null; warning?: string | null } | { requestId: string }> {
   if (!post.shortId) throw new Error("Post sem corte vinculado");
   const short = await db.short.findUnique({ where: { id: post.shortId }, select: { title: true, hook: true } });
   if (!short) throw new Error("O corte deste post foi excluído");
   const render = await db.render.findFirst({ where: { shortId: post.shortId, status: "done", filePath: { not: null } }, orderBy: { completedAt: "desc" } });
   if (!render?.filePath || !fs.existsSync(render.filePath)) throw new Error("O corte ainda não foi renderizado (ou o arquivo do render sumiu). Renderize e reagende.");
 
+  const yt = parsePostMeta(post.meta).youtube;
   if (post.socialAccount!.connection === "uploadpost") {
     if (!post.socialAccount!.externalId) throw new Error("Conta sem perfil do Upload-Post. Reconecte a conta.");
-    const r = await startUploadPost({ profile: post.socialAccount!.externalId, platform: post.socialAccount!.platform, filePath: render.filePath, caption: post.caption, title: short.title });
+    const r = await startUploadPost({ profile: post.socialAccount!.externalId, platform: post.socialAccount!.platform, filePath: render.filePath, caption: post.caption, title: yt?.title || short.title });
     return r.done ? { id: r.id, url: r.url } : { requestId: r.requestId };
   }
   switch (post.socialAccount!.platform) {
     case "youtube": {
       const token = await youtubeAccessToken(post.socialAccount!.id);
-      const { title, description, tags } = youtubeTexts(post.caption, short.title);
-      return uploadYoutubeVideo(token, { filePath: render.filePath, title, description, tags });
+      const { title, description, tags } = youtubeTexts(post.caption, short.title, yt);
+      return uploadYoutubeVideo(token, {
+        filePath: render.filePath,
+        title,
+        description,
+        tags,
+        categoryId: yt?.categoryId,
+        publishAt: yt?.publishAt,
+        privacy: yt?.privacy,
+        madeForKids: yt?.madeForKids ?? false,
+        thumbnailPath: yt?.thumbnailPath,
+        playlistId: yt?.playlistId,
+      });
     }
     default:
       throw new Error(`Publicação real no ${post.socialAccount!.platform} ainda não está disponível`);
   }
 }
 
-/** Título = 1ª linha da legenda (ou título do corte), máx. 100 caracteres; descrição com #Shorts. */
-export function youtubeTexts(caption: string, fallbackTitle: string) {
+/**
+ * Título = meta.title, ou 1ª linha da legenda, ou título do corte (máx. 100 caracteres).
+ * Descrição = meta.description ou a legenda, com #Shorts. Tags = meta.tags ou as hashtags da legenda.
+ */
+export function youtubeTexts(caption: string, fallbackTitle: string, yt?: YoutubeMeta) {
   const linhas = caption.trim().split(/\r?\n/);
-  let title = (linhas[0] || fallbackTitle).replace(/[<>]/g, "").trim() || fallbackTitle;
+  let title = (yt?.title || linhas[0] || fallbackTitle).replace(/[<>]/g, "").trim() || fallbackTitle;
   if (title.length > 100) title = title.slice(0, 97).trimEnd() + "...";
-  let description = caption.trim() || fallbackTitle;
+  let description = yt?.description?.trim() || caption.trim() || fallbackTitle;
   if (!/#shorts\b/i.test(description)) description += "\n\n#Shorts";
-  const tags = Array.from(new Set((caption.match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))).slice(0, 15);
+  const tags = yt?.tags?.length ? yt.tags.slice(0, 30) : Array.from(new Set((caption.match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))).slice(0, 15);
   return { title, description: description.replace(/[<>]/g, "").slice(0, 5000), tags };
 }

@@ -4,7 +4,8 @@ import { appUrl, youtubeConfig } from "./config";
 
 /** Integração oficial com o YouTube Data API v3: OAuth 2.0 + upload resumível de Shorts. */
 
-const SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"];
+// force-ssl: pôr o vídeo numa playlist (contas conectadas antes precisam reconectar pra ganhar esse escopo)
+const SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/youtube.force-ssl"];
 
 export const YOUTUBE_CALLBACK_PATH = "/api/oauth/youtube/callback";
 
@@ -87,14 +88,28 @@ export interface YoutubeUploadInput {
   description: string;
   tags?: string[];
   privacy?: "public" | "unlisted" | "private";
+  categoryId?: string;
+  /** ISO 8601: sobe privado e o YouTube publica nessa hora */
+  publishAt?: string;
+  madeForKids?: boolean;
+  thumbnailPath?: string;
+  playlistId?: string;
 }
 
-/** Upload resumível (videos.insert). Devolve o id do vídeo. */
+/**
+ * Upload resumível (videos.insert) + thumbnail + playlist. Devolve o id do vídeo; se a thumbnail
+ * ou a playlist falharem o vídeo já subiu, então isso volta em `warning` em vez de erro.
+ */
 export async function uploadYoutubeVideo(accessToken: string, input: YoutubeUploadInput) {
   const size = fs.statSync(input.filePath).size;
   const meta = {
-    snippet: { title: input.title, description: input.description, tags: input.tags ?? [], categoryId: "22" },
-    status: { privacyStatus: input.privacy ?? "public", selfDeclaredMadeForKids: false, embeddable: true },
+    snippet: { title: input.title, description: input.description, tags: input.tags ?? [], categoryId: input.categoryId ?? "22" },
+    status: {
+      privacyStatus: input.publishAt ? "private" : (input.privacy ?? "public"),
+      ...(input.publishAt ? { publishAt: new Date(input.publishAt).toISOString() } : {}),
+      selfDeclaredMadeForKids: input.madeForKids ?? false,
+      embeddable: true,
+    },
   };
   const init = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", {
     method: "POST",
@@ -116,7 +131,25 @@ export async function uploadYoutubeVideo(accessToken: string, input: YoutubeUplo
   });
   if (!up.ok) throw new Error(`Falha no upload pro YouTube: ${await apiError(up)}`);
   const j = (await up.json()) as { id: string };
-  return { id: j.id, url: `https://youtube.com/shorts/${j.id}` };
+
+  const warnings: string[] = [];
+  if (input.thumbnailPath) {
+    const th = await fetch(`https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${j.id}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": /\.png$/i.test(input.thumbnailPath) ? "image/png" : "image/jpeg" },
+      body: fs.readFileSync(input.thumbnailPath),
+    });
+    if (!th.ok) warnings.push(`thumbnail não aplicada: ${await apiError(th)}`);
+  }
+  if (input.playlistId) {
+    const pl = await fetch("https://www.googleapis.com/youtube/v3/playlistItems?part=snippet", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ snippet: { playlistId: input.playlistId, resourceId: { kind: "youtube#video", videoId: j.id } } }),
+    });
+    if (!pl.ok) warnings.push(`playlist não aplicada: ${await apiError(pl)}`);
+  }
+  return { id: j.id, url: `https://youtube.com/shorts/${j.id}`, warning: warnings.length ? warnings.join("; ") : null };
 }
 
 async function apiError(res: Response) {

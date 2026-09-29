@@ -89,6 +89,8 @@ model Project {
   expiresAt       DateTime?
   sourcePath      String?
   transcript      String?  // JSON words
+  manualClips     String?  // JSON [{start,end,title?,hook?}]: cortes com in/out definidos (pula a seleção automática)
+  autoRender      Boolean  @default(false) // renderiza em 1080p assim que as prévias ficam prontas
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -349,6 +351,7 @@ model ScheduledPost {
   status          String        @default("scheduled") // scheduled | publishing | published | failed | canceled
   externalId      String?       // id do vídeo publicado na rede
   externalUrl     String?
+  meta            String?       // JSON PostMeta: título/descrição/tags/categoria/playlist/publishAt/thumbnail do YouTube
   error           String?
   publishedAt     DateTime?
   createdAt       DateTime      @default(now())

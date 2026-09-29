@@ -2,6 +2,9 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
 import { resolveChannel, validateAccountSchedule, validateChannelSchedule } from "@/lib/schedule-rules";
+import { checkPostMeta, parsePostMeta, postMetaSchema } from "@/lib/post-meta";
+import { postInclude } from "@/lib/schedule";
+import { publishDuePosts } from "@/lib/publisher";
 
 const patchSchema = z.object({
   caption: z.string().max(2200).optional(),
@@ -9,12 +12,18 @@ const patchSchema = z.object({
   socialAccountId: z.string().optional().nullable(),
   platform: z.enum(["tiktok", "instagram", "youtube"]).optional(),
   status: z.enum(["scheduled", "canceled"]).optional(),
+  meta: postMetaSchema.optional(),
 });
 
-const include = {
-  short: { select: { id: true, title: true, thumbnailUrl: true, renderUrl: true, status: true, projectId: true, project: { select: { title: true } } } },
-  socialAccount: { select: { id: true, platform: true, handle: true } },
-};
+const include = postInclude;
+
+/** Status de um post: scheduled | publishing | published | failed | canceled, com link e erro. */
+export const GET = withUser(async ({ params, user }) => {
+  await publishDuePosts(user!.id);
+  const post = await db.scheduledPost.findFirst({ where: { id: params.id, userId: user!.id }, include });
+  if (!post) return fail("Post não encontrado", 404);
+  return ok({ post: { ...post, meta: parsePostMeta(post.meta) } });
+});
 
 export const PATCH = withUser(async ({ req, params, user }) => {
   const body = patchSchema.parse(await readJson(req));
@@ -37,6 +46,8 @@ export const PATCH = withUser(async ({ req, params, user }) => {
     if (!acc) return fail("Conta não encontrada", 404);
     if (acc.platform !== platform) return fail("A conta escolhida não é da plataforma selecionada", 400);
   }
+  const metaErr = checkPostMeta(body.meta);
+  if (metaErr) return fail(metaErr, 422);
   // post que falhou volta pra fila ao ganhar um novo horário
   const nextStatus = body.status ?? (post.status === "failed" && body.scheduledAt ? "scheduled" : post.status);
   if (nextStatus === "scheduled") {
@@ -49,7 +60,7 @@ export const PATCH = withUser(async ({ req, params, user }) => {
   }
   const updated = await db.scheduledPost.update({
     where: { id: post.id },
-    data: { caption: body.caption, scheduledAt: when, socialAccountId, platform, status: nextStatus, ...(nextStatus === "scheduled" ? { error: null } : {}) },
+    data: { caption: body.caption, scheduledAt: when, socialAccountId, platform, status: nextStatus, ...(body.meta ? { meta: JSON.stringify(body.meta) } : {}), ...(nextStatus === "scheduled" ? { error: null } : {}) },
     include,
   });
   if (post.shortId) await db.short.update({ where: { id: post.shortId }, data: { isScheduled: nextStatus === "scheduled" } });

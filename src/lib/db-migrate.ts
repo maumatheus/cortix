@@ -6,6 +6,9 @@ import { db } from "./db";
  * Ao criar uma coluna nova no schema.prisma, registre aqui tambem.
  */
 const COLUNAS: Array<{ table: string; column: string; ddl: string }> = [
+  { table: "Project", column: "manualClips", ddl: `ALTER TABLE "Project" ADD COLUMN "manualClips" TEXT` },
+  { table: "Project", column: "autoRender", ddl: `ALTER TABLE "Project" ADD COLUMN "autoRender" BOOLEAN NOT NULL DEFAULT false` },
+  { table: "ScheduledPost", column: "meta", ddl: `ALTER TABLE "ScheduledPost" ADD COLUMN "meta" TEXT` },
   { table: "Project", column: "effects", ddl: `ALTER TABLE "Project" ADD COLUMN "effects" TEXT NOT NULL DEFAULT '{}'` },
   { table: "Short", column: "effects", ddl: `ALTER TABLE "Short" ADD COLUMN "effects" TEXT` },
   { table: "Short", column: "reframe", ddl: `ALTER TABLE "Short" ADD COLUMN "reframe" TEXT` },

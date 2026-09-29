@@ -1,0 +1,48 @@
+import fs from "node:fs";
+import { z } from "zod";
+
+/**
+ * Metadados completos de um post (ScheduledPost.meta, JSON). Sem eles o publicador usa a legenda:
+ * 1ª linha vira título, hashtags viram tags (youtubeTexts).
+ */
+export const youtubeMetaSchema = z.object({
+  title: z.string().trim().min(1).max(100).optional(),
+  description: z.string().max(5000).optional(),
+  tags: z.array(z.string().trim().min(1).max(100)).max(30).optional(),
+  /** 20 = Games, 22 = Pessoas e blogs, 24 = Entretenimento, 25 = Notícias e política */
+  categoryId: z.string().regex(/^\d+$/, "categoryId é numérico (ex.: 20 = Games)").optional(),
+  playlistId: z.string().trim().min(1).optional(),
+  /** ISO 8601 com fuso: o vídeo sobe privado e o YouTube publica nessa hora */
+  publishAt: z.string().datetime({ offset: true }).optional(),
+  privacy: z.enum(["public", "unlisted", "private"]).optional(),
+  madeForKids: z.boolean().default(false),
+  /** Caminho local de JPG/PNG até 2 MB (1280x720 recomendado) */
+  thumbnailPath: z.string().min(1).optional(),
+});
+
+export const postMetaSchema = z.object({ youtube: youtubeMetaSchema.optional() });
+
+export type YoutubeMeta = z.infer<typeof youtubeMetaSchema>;
+export type PostMeta = z.infer<typeof postMetaSchema>;
+
+/** Valida os arquivos locais e datas citados no meta. Devolve a mensagem do erro ou null. */
+export function checkPostMeta(meta: PostMeta | null | undefined): string | null {
+  const th = meta?.youtube?.thumbnailPath;
+  if (th) {
+    if (!fs.existsSync(th)) return `Thumbnail não encontrada: ${th}`;
+    if (!/\.(jpe?g|png)$/i.test(th)) return "A thumbnail precisa ser .jpg ou .png";
+    if (fs.statSync(th).size > 2 * 1024 * 1024) return "A thumbnail passa de 2 MB (limite do YouTube)";
+  }
+  const at = meta?.youtube?.publishAt;
+  if (at && Date.parse(at) < Date.now()) return "publishAt precisa ser no futuro";
+  return null;
+}
+
+export function parsePostMeta(json: string | null | undefined): PostMeta {
+  if (!json) return {};
+  try {
+    return postMetaSchema.parse(JSON.parse(json));
+  } catch {
+    return {};
+  }
+}

@@ -16,6 +16,11 @@ export function projectCost(startSec: number, endSec: number) {
   return minutes;
 }
 
+/** Cortes com in/out definidos: cobra só os minutos dos cortes, não a janela entre eles. */
+export function manualClipsCost(clips: Array<{ start: number; end: number }>) {
+  return clips.reduce((sum, c) => sum + projectCost(c.start, c.end), 0);
+}
+
 export async function chargeCredits(userId: string, amount: number, description: string, refId?: string) {
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("Usuário não encontrado");

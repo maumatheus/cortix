@@ -94,6 +94,8 @@ export async function processProject(projectId: string) {
     const info = await probe(src);
     const fresh = await db.project.findUnique({ where: { id: projectId } });
     if (!fresh) return;
+    // cortes com in/out definidos por quem pediu (agente/API): sem seleção automática nem ajuste de cena
+    const manual = parseManualClips(fresh.manualClips);
     const durationSec = fresh.durationSec || info.duration;
     const windowStart = Math.max(0, fresh.startTime || 0);
     const windowEnd = fresh.endTime && fresh.endTime > windowStart ? Math.min(fresh.endTime, durationSec) : durationSec;
@@ -118,8 +120,9 @@ export async function processProject(projectId: string) {
         wordSource = "subtitles";
       }
     }
-    // sem legenda (upload ou vídeo sem legenda): transcreve o trecho inteiro localmente
-    if (!fresh.transcript && !words.length && !whisperDisabled()) {
+    // sem legenda (upload ou vídeo sem legenda): transcreve o trecho inteiro localmente.
+    // Com cortes manuais, só os cortes são transcritos (etapa 3), não a janela inteira.
+    if (!fresh.transcript && !words.length && !manual && !whisperDisabled()) {
       try {
         let lastPct = -1;
         words = await transcribeWithWhisper(src, {
@@ -147,7 +150,7 @@ export async function processProject(projectId: string) {
     const pref = CLIP_DURATIONS.find((d) => d.id === fresh.clipDuration) || CLIP_DURATIONS[0];
     const existing = await db.short.count({ where: { projectId } });
     if (existing === 0) {
-      const { clips } = await selectHighlights({
+      const { clips } = manual ? { clips: manual.map((c, i) => ({ start: c.start, end: c.end, title: c.title || (manual.length > 1 ? `${fresh.title} #${i + 1}` : fresh.title), hook: c.hook ?? "", reason: "Corte manual", score: 100 })) } : await selectHighlights({
         words,
         windowStart,
         windowEnd,
@@ -161,7 +164,7 @@ export async function processProject(projectId: string) {
       if (!clips.length) throw new Error("Não foi possível encontrar momentos neste trecho do vídeo.");
       // legenda do YouTube só tem tempo por frase (as palavras são espalhadas por igual):
       // retranscreve só os cortes escolhidos pra legenda palavra a palavra cair no tempo certo
-      if (wordSource === "subtitles" && !whisperDisabled()) {
+      if ((wordSource === "subtitles" || (manual && wordSource !== "cache")) && !whisperDisabled()) {
         let i = 0;
         for (const c of clips) {
           i++;
@@ -186,7 +189,7 @@ export async function processProject(projectId: string) {
       // início/fim encaixados nas trocas de cena (sem "flash" do plano vizinho)
       await setProject(projectId, { stage: "Ajustando os cortes às cenas" }).catch(() => {});
       const strict = "strictMin" in pref && !!pref.strictMin;
-      for (const c of clips) {
+      for (const c of manual ? [] : clips) {
         try {
           Object.assign(c, await snapToScenes(src, c, words, { min: strict ? pref.min : 0, max: pref.max + 1.5 }));
         } catch (e) {
@@ -260,6 +263,7 @@ export async function processProject(projectId: string) {
       await setProject(projectId, { progress: 68 + Math.round((done / total) * 30) });
     }
     await setProject(projectId, { status: "ready", stage: "Cortes prontos", progress: 100 });
+    if (fresh.autoRender) await queueRenders(projectId, fresh.userId);
   } catch (e) {
     const msg = (e as Error).message || "Erro desconhecido";
     console.error("[pipeline] projeto falhou", projectId, msg);
@@ -269,6 +273,29 @@ export async function processProject(projectId: string) {
       await refundCredits(p.userId, p.creditsCharged, `Estorno: projeto "${p.title}" falhou`, projectId);
       await setProject(projectId, { creditsCharged: 0 });
     }
+  }
+}
+
+type ManualClip = { start: number; end: number; title?: string; hook?: string };
+
+function parseManualClips(json: string | null | undefined): ManualClip[] | null {
+  if (!json) return null;
+  try {
+    const list = (JSON.parse(json) as ManualClip[]).filter((c) => Number.isFinite(c.start) && Number.isFinite(c.end) && c.end > c.start);
+    return list.length ? list : null;
+  } catch {
+    return null;
+  }
+}
+
+/** autoRender: manda os cortes prontos pro render final (1080x1920), como o botão "Renderizar". */
+async function queueRenders(projectId: string, userId: string) {
+  const { enqueue } = await import("./queue"); // import tardio: queue.ts importa este arquivo
+  const ready = await db.short.findMany({ where: { projectId, status: "ready" }, select: { id: true, watermark: true } });
+  for (const s of ready) {
+    const render = await db.render.create({ data: { id: newId(), shortId: s.id, userId, resolution: "1080x1920", watermark: s.watermark, status: "queued" } });
+    await db.short.update({ where: { id: s.id }, data: { status: "rendering", renderProgress: 0 } });
+    enqueue({ kind: "render", id: render.id });
   }
 }
 

@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { newId } from "@/lib/ids";
 import { isSubscriber } from "@/lib/auth";
 import { ok, readJson, withUser } from "@/lib/api";
-import { chargeCredits, projectCost } from "@/lib/credits";
+import { chargeCredits, manualClipsCost, projectCost } from "@/lib/credits";
 import { FREE_CLIPS, FREE_PROJECT_EXPIRY_DAYS } from "@/lib/plans";
 import { getCaptionStyle } from "@/lib/caption-styles";
 import { resolveEffects } from "@/lib/effects";
@@ -29,6 +29,10 @@ const createSchema = z.object({
   endTime: z.number().min(0).optional(),
   useMyCredits: z.boolean().default(false),
   targetClips: z.number().int().min(1).max(40).optional(),
+  /** cortes com in/out já definidos (segundos): pula a seleção automática */
+  clips: z.array(z.object({ start: z.number().min(0), end: z.number().positive(), title: z.string().max(200).optional(), hook: z.string().max(200).optional() }).refine((c) => c.end > c.start, "end precisa ser maior que start")).min(1).max(40).optional(),
+  /** renderiza em 1080x1920 assim que os cortes ficarem prontos */
+  autoRender: z.boolean().default(false),
 });
 
 export const GET = withUser(async ({ req, user }) => {
@@ -73,21 +77,22 @@ export const POST = withUser(async ({ req, user }) => {
   let meta = null;
   if (body.url) meta = await fetchMetadata(body.url);
   const durationSec = meta?.durationSec ?? 0;
-  const startTime = body.startTime;
-  const endTime = body.endTime && body.endTime > startTime ? Math.min(body.endTime, durationSec || body.endTime) : durationSec;
+  const clips = body.clips ? [...body.clips].sort((a, b) => a.start - b.start) : null;
+  const startTime = clips ? clips[0].start : body.startTime;
+  const endTime = clips ? Math.max(...clips.map((c) => c.end)) : body.endTime && body.endTime > startTime ? Math.min(body.endTime, durationSec || body.endTime) : durationSec;
 
   const freeLeft = Math.max(0, FREE_CLIPS - user!.freeClipsUsed);
   const wantsFree = !body.useMyCredits && !subscriber && freeLeft > 0;
   let isFree = false;
   let creditsCharged = 0;
-  let targetClips = body.targetClips ?? estimateClips(Math.max(1, endTime - startTime), body.clipDuration);
+  let targetClips = clips ? clips.length : (body.targetClips ?? estimateClips(Math.max(1, endTime - startTime), body.clipDuration));
 
   if (wantsFree) {
     isFree = true;
     targetClips = Math.min(targetClips, freeLeft);
     await db.user.update({ where: { id: user!.id }, data: { freeClipsUsed: { increment: targetClips } } });
   } else {
-    const cost = projectCost(startTime, endTime || durationSec);
+    const cost = clips ? manualClipsCost(clips) : projectCost(startTime, endTime || durationSec);
     await chargeCredits(user!.id, cost, `Projeto: ${body.title || meta?.title || "vídeo"}`);
     creditsCharged = cost;
   }
@@ -123,6 +128,8 @@ export const POST = withUser(async ({ req, user }) => {
       creditsCharged,
       expiresAt: isFree ? new Date(Date.now() + FREE_PROJECT_EXPIRY_DAYS * 86400_000) : null,
       sourcePath: body.sourcePath ?? null,
+      manualClips: clips ? JSON.stringify(clips.slice(0, targetClips)) : null,
+      autoRender: body.autoRender,
       status: "queued",
       stage: "Na fila",
     },
