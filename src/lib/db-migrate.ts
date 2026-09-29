@@ -8,6 +8,7 @@ import { db } from "./db";
 const COLUNAS: Array<{ table: string; column: string; ddl: string }> = [
   { table: "Project", column: "effects", ddl: `ALTER TABLE "Project" ADD COLUMN "effects" TEXT NOT NULL DEFAULT '{}'` },
   { table: "Short", column: "effects", ddl: `ALTER TABLE "Short" ADD COLUMN "effects" TEXT` },
+  { table: "Short", column: "reframe", ddl: `ALTER TABLE "Short" ADD COLUMN "reframe" TEXT` },
   { table: "User", column: "licenseCheckedAt", ddl: `ALTER TABLE "User" ADD COLUMN "licenseCheckedAt" DATETIME` },
   { table: "User", column: "licenseExpiresAt", ddl: `ALTER TABLE "User" ADD COLUMN "licenseExpiresAt" DATETIME` },
   { table: "SocialAccount", column: "connection", ddl: `ALTER TABLE "SocialAccount" ADD COLUMN "connection" TEXT NOT NULL DEFAULT 'simulated'` },

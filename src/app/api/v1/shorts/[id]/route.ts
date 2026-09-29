@@ -24,7 +24,7 @@ export const GET = withUser(async ({ params, user }) => {
   const words: Word[] = short.project.transcript ? JSON.parse(short.project.transcript) : [];
   const renders = await db.render.findMany({ where: { shortId: short.id }, orderBy: { createdAt: "desc" }, take: 5 });
   return ok({
-    short: { ...short, captions: JSON.parse(short.captions || "[]"), captionTemplate: short.captionTemplate ? JSON.parse(short.captionTemplate) : null, project: { ...short.project, transcript: undefined, captionTemplate: JSON.parse(short.project.captionTemplate || "{}") } },
+    short: { ...short, captions: JSON.parse(short.captions || "[]"), reframe: short.reframe ? JSON.parse(short.reframe) : null, captionTemplate: short.captionTemplate ? JSON.parse(short.captionTemplate) : null, project: { ...short.project, transcript: undefined, captionTemplate: JSON.parse(short.project.captionTemplate || "{}") } },
     words: wordsInRange(words, Math.max(0, short.startTime - 120), short.endTime + 120),
     renders,
   });
@@ -59,7 +59,7 @@ export const PATCH = withUser(async ({ req, params, user }) => {
   // qualquer edição invalida o render anterior
   if (Object.keys(data).length && short.status === "rendered") data.status = "ready";
   const updated = await db.short.update({ where: { id: short.id }, data });
-  return ok({ short: { ...updated, captions: JSON.parse(updated.captions || "[]") } });
+  return ok({ short: { ...updated, captions: JSON.parse(updated.captions || "[]"), reframe: updated.reframe ? JSON.parse(updated.reframe) : null } });
 });
 
 export const DELETE = withUser(async ({ params, user }) => {

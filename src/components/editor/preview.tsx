@@ -9,12 +9,15 @@ import { GUIDE_ZONES, OVERLAYS, VIDEO_FILTERS } from "./constants";
 import { emojiFor, findGroupIndex } from "./captions";
 import { useTime } from "./stores";
 import type { Player } from "./use-player";
+import { reframeXAt, TRACKED_LAYOUTS, type ReframeData } from "@/lib/video/reframe-curve";
 
 export interface PreviewProps {
   src: string | null;
   poster: string | null;
   player: Player;
   layout: string;
+  /** câmera virtual que segue o rosto (mesma curva do render) */
+  reframe?: ReframeData | null;
   style: EditorStyle;
   captions: CaptionGroup[];
   hook: string | null;
@@ -73,7 +76,7 @@ export function Preview(p: PreviewProps) {
       <div className="relative shrink-0" style={{ width: cw, height: ch, margin: pad }}>
         <div className="absolute inset-0 overflow-hidden rounded-md bg-black shadow-[0_0_0_1px_rgba(255,255,255,.08),0_30px_80px_-20px_rgba(0,0,0,.9)]" onPointerDown={() => p.onSelectShape(null)}>
           {p.src ? (
-            <VideoLayout src={p.src} poster={p.poster} player={p.player} layout={p.layout} filter={filter} />
+            <VideoLayout src={p.src} poster={p.poster} player={p.player} layout={p.layout} filter={filter} reframe={p.reframe} />
           ) : (
             <div className="flex size-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-muted-foreground">
               {p.poster ? <img src={p.poster} alt="" className="absolute inset-0 size-full object-cover opacity-40" /> : null}
@@ -116,11 +119,9 @@ export function Preview(p: PreviewProps) {
 
 /* ---------- vídeo por layout ---------- */
 
-function VideoLayout({ src, poster, player, layout, filter }: { src: string; poster: string | null; player: Player; layout: string; filter?: string }) {
+function VideoLayout({ src, poster, player, layout, filter, reframe }: { src: string; poster: string | null; player: Player; layout: string; filter?: string; reframe?: ReframeData | null }) {
   const base: React.CSSProperties = { filter };
-  const main = (
-    <video ref={player.setVideo} src={src} poster={poster || undefined} preload="auto" playsInline className="absolute inset-0 size-full object-cover" style={{ ...base, objectPosition: "50% 50%" }} />
-  );
+  const main = <TrackedVideo src={src} poster={poster} player={player} style={base} reframe={TRACKED_LAYOUTS.has(layout) ? reframe : null} />;
   switch (layout) {
     case "center":
       return (
@@ -345,5 +346,29 @@ function Rulers({ cw, ch }: { cw: number; ch: number }) {
         ))}
       </div>
     </div>
+  );
+}
+
+/** Vídeo em object-cover com o recorte horizontal seguindo a câmera virtual (ou no centro). */
+function TrackedVideo({ src, poster, player, style, reframe }: { src: string; poster: string | null; player: Player; style: React.CSSProperties; reframe?: ReframeData | null }) {
+  const t = useTime(player.time);
+  const [aspect, setAspect] = useState(16 / 9);
+  // object-position x% = deslocamento da janela 9:16 dentro da largura do vídeo
+  let pos = 50;
+  if (reframe?.keys.length) {
+    const cw = 9 / 16 / aspect; // largura do recorte, em fração da largura do vídeo
+    if (cw < 1) pos = Math.max(0, Math.min(1, (reframeXAt(reframe, t) - cw / 2) / (1 - cw))) * 100;
+  }
+  return (
+    <video
+      ref={player.setVideo}
+      src={src}
+      poster={poster || undefined}
+      preload="auto"
+      playsInline
+      onLoadedMetadata={(e) => e.currentTarget.videoHeight && setAspect(e.currentTarget.videoWidth / e.currentTarget.videoHeight)}
+      className="absolute inset-0 size-full object-cover"
+      style={{ ...style, objectPosition: `${pos.toFixed(2)}% 50%` }}
+    />
   );
 }

@@ -1,3 +1,4 @@
+import type { ReframeData } from "@/lib/video/reframe-curve";
 import type { CaptionStyle } from "@/lib/caption-styles";
 import type { CaptionGroup, Word } from "@/lib/video/transcript";
 
@@ -50,6 +51,7 @@ export interface ShortRecord {
   layout: string;
   captionTemplate: Record<string, unknown> | null;
   captions: CaptionGroup[];
+  reframe?: ReframeData | null;
   thumbnailUrl: string | null;
   previewUrl: string | null;
   renderUrl: string | null;

@@ -111,6 +111,7 @@ model Short {
   captionTemplate String?  // JSON override
   captions        String?  // JSON word groups
   effects         String?  // JSON override de efeitos para este corte
+  reframe         String?  // JSON da câmera virtual que segue o rosto (ReframeData)
   thumbnailUrl    String?
   previewUrl      String?
   renderUrl       String?

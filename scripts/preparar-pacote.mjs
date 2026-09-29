@@ -58,6 +58,8 @@ for (const lixo of [
   path.join(destinoApp, ".next", "standalone", "dist"),
   path.join(destinoApp, ".next", "standalone", "pacote"),
   path.join(destinoApp, ".next", "standalone", ".git"),
+  // detector de rosto (onnxruntime-node): o instalador e so Windows x64, o resto sao ~70 MB a toa
+  ...["darwin", "linux", path.join("win32", "arm64")].map((p) => path.join(destinoApp, ".next", "standalone", "node_modules", "onnxruntime-node", "bin", "napi-v6", p)),
 ]) {
   if (fs.existsSync(lixo)) {
     fs.rmSync(lixo, { recursive: true, force: true });

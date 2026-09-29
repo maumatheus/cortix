@@ -9,6 +9,7 @@ import { downloadSubtitles, downloadVideo, fetchMetadata } from "./ytdlp";
 import { groupWords, wordsInRange, type Word } from "./transcript";
 import { parseJson3 } from "./json3";
 import { replaceRange, transcribeWithWhisper, whisperDisabled } from "./whisper";
+import { analyzeReframe, TRACKED_LAYOUTS, type ReframeData } from "./reframe";
 import { selectHighlights } from "./highlights";
 import { makeThumbnail, makeVerticalThumbnail, probe, renderClip } from "./render";
 import { resolveEffects, type EffectsConfig } from "../effects";
@@ -27,6 +28,24 @@ function effectsFor(shortJson: string | null | undefined, projectJson: string | 
 function hookFor(effects: EffectsConfig, autoCta: boolean, hook: string | null, title: string) {
   if (!effects.hook && !autoCta) return null;
   return hook || title || null;
+}
+
+/**
+ * Câmera virtual que segue o rosto: reaproveita a análise salva no corte se ela cobre o trecho atual,
+ * senão analisa de novo e salva. Qualquer falha cai no recorte central (null).
+ */
+async function ensureReframe(short: { id: string; layout: string; startTime: number; endTime: number; reframe: string | null }, src: string): Promise<ReframeData | null> {
+  if (!TRACKED_LAYOUTS.has(short.layout) || process.env.CORTIX_REFRAME === "0") return null;
+  try {
+    const saved = short.reframe ? (JSON.parse(short.reframe) as ReframeData) : null;
+    if (saved?.v === 1 && saved.start <= short.startTime + 0.05 && saved.end >= short.endTime - 0.05) return saved.faces ? saved : null;
+    const data = await analyzeReframe(src, short.startTime, short.endTime);
+    await db.short.update({ where: { id: short.id }, data: { reframe: JSON.stringify(data) } });
+    return data.faces ? data : null;
+  } catch (e) {
+    console.error("[reframe] falhou, usando recorte central:", (e as Error).message);
+    return null;
+  }
 }
 
 function styleFor(templateJson: string | null | undefined, projectJson: string): CaptionStyle {
@@ -199,7 +218,8 @@ export async function processProject(projectId: string) {
       const thumb = path.join(sdir, "thumb.jpg");
       const preview = path.join(sdir, "preview.mp4");
       try {
-        await makeVerticalThumbnail(src, s.startTime + 1, thumb, s.layout, 360);
+        const reframe = await ensureReframe(s, src);
+        await makeVerticalThumbnail(src, s.startTime + 1, thumb, s.layout, 360, reframe);
         const style = styleFor(s.captionTemplate, fresh.captionTemplate);
         const groups = JSON.parse(s.captions || "[]");
         const effects = effectsFor(s.effects, fresh.effects);
@@ -219,6 +239,7 @@ export async function processProject(projectId: string) {
           captionsEnabled: !fresh.ignoreCaptions,
           effects,
           primaryColor: style.highlightColor,
+          reframe,
         });
         await db.short.update({ where: { id: s.id }, data: { status: "ready", thumbnailUrl: storageUrl(thumb), previewUrl: storageUrl(preview) } });
       } catch (e) {
@@ -255,6 +276,7 @@ export async function processRender(renderId: string) {
     const style = styleFor(short.captionTemplate, project.captionTemplate);
     const groups = JSON.parse(short.captions || "[]");
     const effects = effectsFor(short.effects, project.effects);
+    const reframe = await ensureReframe(short, project.sourcePath);
     let last = 0;
     await renderClip({
       src: project.sourcePath,
@@ -272,6 +294,7 @@ export async function processRender(renderId: string) {
       captionsEnabled: !project.ignoreCaptions,
       effects,
       primaryColor: style.highlightColor,
+      reframe,
       onProgress: (pct) => {
         if (pct - last >= 3) {
           last = pct;

@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   //  outputFileTracingExcludes com "*" esvaziava node_modules/next no standalone)
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   eslint: { ignoreDuringBuilds: true },
-  serverExternalPackages: ["@prisma/client", "bcryptjs"],
+  serverExternalPackages: ["@prisma/client", "bcryptjs", "onnxruntime-node"],
   // no app desktop o servidor roda dentro de Program Files (somente leitura): o otimizador
   // de imagens tentava gravar em .next/cache e estourava EPERM. As imagens sao locais e pequenas.
   images: { unoptimized: true },

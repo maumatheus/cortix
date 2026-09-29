@@ -6,6 +6,7 @@ import type { CaptionStyle } from "../caption-styles";
 import type { CaptionGroup } from "./transcript";
 import { hasAnyEffect, type EffectsConfig } from "../effects";
 import { buildAudioGraph, buildEffects } from "./effects";
+import { trackedCrop, type ReframeData } from "./reframe-curve";
 
 export interface ProbeInfo {
   width: number;
@@ -44,17 +45,17 @@ export async function makeThumbnail(src: string, atSec: number, out: string, wid
 }
 
 /** Gera uma miniatura já no recorte vertical do layout. */
-export async function makeVerticalThumbnail(src: string, atSec: number, out: string, layout: string, width = 360) {
+export async function makeVerticalThumbnail(src: string, atSec: number, out: string, layout: string, width = 360, reframe?: ReframeData | null) {
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const height = Math.round((width * 16) / 9);
-  const vf = layoutFilter(layout, width, height);
+  const vf = layoutFilter(layout, width, height, reframe ? { data: reframe, clipStart: Math.max(0, atSec) } : null);
   const r = await run(ffmpegBin(), ["-y", "-v", "error", "-ss", String(Math.max(0, atSec)), "-i", src, "-frames:v", "1", "-filter_complex", `${vf}[vout]`, "-map", "[vout]", out]);
   if (r.code !== 0) throw new Error("thumbnail falhou: " + r.stderr.slice(0, 200));
   return out;
 }
 
 /** Filtro de layout: recebe [0:v] e produz um fluxo W x H (9:16). Retorna uma cadeia sem o rótulo final. */
-export function layoutFilter(layout: string, W: number, H: number): string {
+export function layoutFilter(layout: string, W: number, H: number, track?: { data: ReframeData; clipStart: number } | null): string {
   switch (layout) {
     case "center":
       return `[0:v]split=2[bg][fg];[bg]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=24:8,eq=brightness=-0.08[bgb];[fg]scale=${W}:-2[fgs];[bgb][fgs]overlay=(W-w)/2:(H-h)/2,format=yuv420p`;
@@ -68,10 +69,10 @@ export function layoutFilter(layout: string, W: number, H: number): string {
       return `[0:v]split=3[a][b][c];[a]crop=iw/3:ih:0:0,scale=${W}:${Math.round(H / 3)}:force_original_aspect_ratio=increase,crop=${W}:${Math.round(H / 3)}[t1];[b]crop=iw/3:ih:iw/3:0,scale=${W}:${Math.round(H / 3)}:force_original_aspect_ratio=increase,crop=${W}:${Math.round(H / 3)}[t2];[c]crop=iw/3:ih:2*iw/3:0,scale=${W}:${H - 2 * Math.round(H / 3)}:force_original_aspect_ratio=increase,crop=${W}:${H - 2 * Math.round(H / 3)}[t3];[t1][t2][t3]vstack=inputs=3,format=yuv420p`;
     case "single-clean":
       // descarta a faixa de baixo (letreiro/legenda queimada do video original) e so entao corta 9:16
-      return `[0:v]crop=iw:ih*0.8:0:0,crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=${W}:${H},format=yuv420p`;
+      return `[0:v]crop=iw:ih*0.8:0:0,${track ? trackedCrop(track.data, track.clipStart) : "crop=ih*9/16:ih:(iw-ih*9/16)/2:0"},scale=${W}:${H},format=yuv420p`;
     case "single":
     default:
-      return `[0:v]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=${W}:${H},format=yuv420p`;
+      return `[0:v]${track ? trackedCrop(track.data, track.clipStart) : "crop=ih*9/16:ih:(iw-ih*9/16)/2:0"},scale=${W}:${H},format=yuv420p`;
   }
 }
 
@@ -94,6 +95,8 @@ export interface RenderOptions {
   /** Efeitos de transformação (zoom, cor, marca, velocidade, música). */
   effects?: EffectsConfig | null;
   primaryColor?: string;
+  /** Câmera virtual que segue o rosto (layouts single/single-clean). */
+  reframe?: ReframeData | null;
   onProgress?: (pct: number) => void;
 }
 
@@ -105,7 +108,7 @@ export async function renderClip(o: RenderOptions) {
 
   const fonts = fontsDir();
   const fx = o.effects && hasAnyEffect(o.effects) ? buildEffects({ effects: o.effects, W, H, dur, fps: 30, fontsDir: fonts, primaryColor: o.primaryColor }) : null;
-  const filters: string[] = [layoutFilter(o.layout, W, H), ...(fx?.preCaption ?? [])];
+  const filters: string[] = [layoutFilter(o.layout, W, H, o.reframe ? { data: o.reframe, clipStart: o.start } : null), ...(fx?.preCaption ?? [])];
   const captions = o.captionsEnabled !== false && o.style.highlightMode !== undefined && o.style.id !== "none";
   let assFile: string | null = null;
   if (captions || o.hook) {

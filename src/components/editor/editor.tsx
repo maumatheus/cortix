@@ -418,6 +418,7 @@ function EditorInner({ projectId, data, onReload }: { projectId: string; data: S
                 poster={short.thumbnailUrl || short.project.thumbnailUrl}
                 player={player}
                 layout={s.layout}
+                reframe={short.reframe}
                 style={s.style}
                 captions={captionsHidden ? [] : s.captions}
                 hook={captionsHidden ? null : s.hook}
