@@ -200,10 +200,12 @@ async function publishReal(post: {
       });
       if (audited) return r;
       // sem auditoria o envio nasce privado, mas a troca de visibilidade logo depois costuma passar (testado em 30/09)
+      // publishAt no futuro não pode virar público agora: agenda pelo videos.update
+      const publishAt = yt?.publishAt && new Date(yt.publishAt).getTime() > Date.now() ? yt.publishAt : undefined;
       const alvo = yt?.privacy ?? "public";
-      if (alvo === "private") return r;
+      if (alvo === "private" && !publishAt) return r;
       try {
-        await setYoutubePrivacy(token, r.id, alvo, yt?.madeForKids ?? false);
+        await setYoutubePrivacy(token, r.id, alvo, yt?.madeForKids ?? false, publishAt);
         return r;
       } catch (e) {
         const aviso = `${YOUTUBE_PRIVATE_WARNING} (${(e as Error).message}): https://studio.youtube.com/video/${r.id}/edit`;

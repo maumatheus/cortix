@@ -18,6 +18,7 @@ import { resolveEffects } from "../src/lib/effects";
 import { processProject } from "../src/lib/video/pipeline";
 import { callTool, ToolError } from "../src/lib/mcp/tools";
 import { publishDuePosts } from "../src/lib/publisher";
+import { youtubeAudited } from "../src/lib/social/config";
 
 const video = process.argv[2] || path.resolve(__dirname, "../../cortix-studio/assets/gameplay/gta/gta6-dirigindo.mp4");
 
@@ -80,6 +81,7 @@ async function main() {
       if (url.includes("/upload/session/")) return Response.json({ id: "VID123" });
       if (url.includes("thumbnails/set")) return Response.json({ items: [] });
       if (url.includes("playlistItems")) return Response.json({ id: "PLI1" });
+      if (url.includes("/videos?part=status") && init?.method === "PUT") return Response.json(JSON.parse(init.body as string));
       return new Response("{}", { status: 404 });
     }) as typeof fetch;
 
@@ -96,7 +98,11 @@ async function main() {
     assert.deepEqual(meta.snippet.tags, ["gta6", "gta"]);
     assert.equal(meta.snippet.categoryId, "20");
     assert.equal(meta.status.privacyStatus, "private", "publishAt exige privado");
-    assert.equal(meta.status.publishAt, new Date(publishAt).toISOString());
+    // auditado: publishAt vai no envio; sem auditoria: vai no videos.update logo depois (nunca vira público antes da hora)
+    const upd = calls.find((c) => c.url.includes("/videos?part=status") && c.method === "PUT");
+    const agendamento = (youtubeAudited() ? meta.status : (upd?.body as { status: Record<string, unknown> } | undefined)?.status) ?? {};
+    assert.equal(agendamento.privacyStatus, "private", "com publishAt não pode virar público");
+    assert.equal(agendamento.publishAt, new Date(publishAt).toISOString());
     assert.equal(meta.status.selfDeclaredMadeForKids, false);
     assert.ok(calls.some((c) => c.url.includes("thumbnails/set?videoId=VID123")), "thumbnail enviada");
     const pl = calls.find((c) => c.url.includes("playlistItems"));

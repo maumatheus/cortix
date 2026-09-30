@@ -160,15 +160,19 @@ export async function uploadYoutubeVideo(accessToken: string, input: YoutubeUplo
  * Troca a visibilidade de um vídeo já enviado (videos.update, part=status). Manda o status inteiro:
  * campo omitido volta pro padrão (embeddable/publicStatsViewable caíam pra false).
  */
-export async function setYoutubePrivacy(accessToken: string, videoId: string, privacy: "public" | "unlisted" | "private", madeForKids = false) {
+export async function setYoutubePrivacy(accessToken: string, videoId: string, privacy: "public" | "unlisted" | "private", madeForKids = false, publishAt?: string) {
+  // publishAt futuro: fica privado e o YouTube publica sozinho na hora (exige privacyStatus private)
+  const agendado = publishAt ? new Date(publishAt).toISOString() : undefined;
+  const alvo = agendado ? "private" : privacy;
   const res = await fetch(`${GAPI}/youtube/v3/videos?part=status`, {
     method: "PUT",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ id: videoId, status: { privacyStatus: privacy, selfDeclaredMadeForKids: madeForKids, embeddable: true, publicStatsViewable: true, license: "youtube" } }),
+    body: JSON.stringify({ id: videoId, status: { privacyStatus: alvo, ...(agendado ? { publishAt: agendado } : {}), selfDeclaredMadeForKids: madeForKids, embeddable: true, publicStatsViewable: true, license: "youtube" } }),
   });
   if (!res.ok) throw new Error(await apiError(res));
-  const j = (await res.json()) as { status?: { privacyStatus?: string } };
-  if (j.status?.privacyStatus !== privacy) throw new Error(`o YouTube manteve o vídeo como ${j.status?.privacyStatus ?? "?"}`);
+  const j = (await res.json()) as { status?: { privacyStatus?: string; publishAt?: string } };
+  if (j.status?.privacyStatus !== alvo) throw new Error(`o YouTube manteve o vídeo como ${j.status?.privacyStatus ?? "?"}`);
+  if (agendado && !j.status?.publishAt) throw new Error("o YouTube não aceitou o agendamento (publishAt)");
 }
 
 async function apiError(res: Response) {
