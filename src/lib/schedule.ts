@@ -49,6 +49,8 @@ export async function createScheduledPost(user: { id: string; channel?: string |
     const short = await db.short.findFirst({ where: { id: body.shortId, project: { userId: user.id } } });
     if (!short) throw new ScheduleError("Corte não encontrado", 404);
   }
+  const captionErr = checkCaption(body.caption);
+  if (captionErr) throw new ScheduleError(captionErr, 422, { rule: "caption" });
   const metaErr = checkPostMeta(body.meta);
   if (metaErr) throw new ScheduleError(metaErr, 422);
   if (body.meta?.carousel) {
@@ -87,4 +89,11 @@ export async function createScheduledPost(user: { id: string; channel?: string |
   });
   if (body.shortId) await db.short.update({ where: { id: body.shortId }, data: { isScheduled: true } });
   return post;
+}
+
+/** Pega legenda que é na verdade o arquivo de instruções inteiro (ex.: textos.md colado com títulos markdown). */
+export function checkCaption(caption: string): string | null {
+  if (/^#{1,6}\s/m.test(caption)) return "A legenda tem título markdown (\"# ...\"). Mande só o texto da legenda, sem o arquivo de instruções.";
+  if (/postar as imagens|na ordem \(\d|^legenda\s*\(/im.test(caption)) return "A legenda parece conter instruções internas. Mande só o texto que vai ao ar.";
+  return null;
 }

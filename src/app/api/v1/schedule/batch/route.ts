@@ -3,6 +3,7 @@ import { SOCIAL_PLATFORMS } from "@/lib/social/platforms";
 import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
 import { newId } from "@/lib/ids";
+import { checkCaption } from "@/lib/schedule";
 import { buildBatchSlots, MAX_POSTS_PER_DAY, MIN_GAP_HOURS, validateAccountSchedule, validatePostChannels } from "@/lib/schedule-rules";
 
 const schema = z.object({
@@ -37,6 +38,8 @@ export const POST = withUser(async ({ req, user }) => {
   });
   const err = validatePostChannels(acc?.channel, user!.channel, slots) ?? validateAccountSchedule(siblings.map((s) => s.scheduledAt), slots);
   if (err) return fail(err, 400);
+  const captionErr = body.caption ? checkCaption(body.caption) : null;
+  if (captionErr) return fail(captionErr, 422);
 
   const byId = new Map(shorts.map((s) => [s.id, s]));
   const created = await db.$transaction(

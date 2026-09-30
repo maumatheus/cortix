@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { fail, ok, readJson, withUser } from "@/lib/api";
 import { airTimes, validateAccountSchedule, validatePostChannels } from "@/lib/schedule-rules";
 import { checkPostMeta, parsePostMeta, postMetaSchema } from "@/lib/post-meta";
-import { postInclude } from "@/lib/schedule";
+import { checkCaption, postInclude } from "@/lib/schedule";
 import { publishDuePosts } from "@/lib/publisher";
 
 const patchSchema = z.object({
@@ -32,6 +32,9 @@ export const PATCH = withUser(async ({ req, params, user }) => {
   if (!post) return fail("Post não encontrado", 404);
   if (post.status === "published") return fail("Post já publicado não pode ser alterado", 400);
   if (post.status === "publishing") return fail("Esse post está sendo enviado agora. Aguarde terminar.", 409);
+
+  const captionErr = body.caption !== undefined ? checkCaption(body.caption) : null;
+  if (captionErr) return fail(captionErr, 422);
 
   const platform = body.platform ?? post.platform;
   const socialAccountId = body.socialAccountId === undefined ? post.socialAccountId : body.socialAccountId;

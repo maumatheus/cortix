@@ -25,6 +25,9 @@ export const YOUTUBE_PRIVATE_WARNING = "subiu PRIVADO no YouTube (app do Google 
  */
 let rodando: Promise<unknown> | null = null;
 
+/** Agendamento real vencido há mais que isso (Cortix estava fechado no horário) não sai sozinho: vira falha pra alguém decidir. */
+const ATRASO_MAX_MS = (Number(process.env.CORTIX_ATRASO_MAX_MIN) || 15) * 60_000;
+
 export function publishDuePosts(userId?: string, opts: { now?: Date } = {}) {
   // uma rodada por vez: GETs de página e o timer de fundo podem chamar juntos
   if (!rodando) rodando = rodada(userId, opts.now ?? new Date()).finally(() => (rodando = null));
@@ -34,7 +37,7 @@ export function publishDuePosts(userId?: string, opts: { now?: Date } = {}) {
 async function rodada(userId: string | undefined, now: Date) {
   const due = await db.scheduledPost.findMany({
     where: { status: "scheduled", scheduledAt: { lte: now }, ...(userId ? { userId } : {}) },
-    select: { id: true, shortId: true, platform: true, caption: true, meta: true, user: { select: { channel: true } }, socialAccount: { select: { id: true, connection: true, platform: true, externalId: true, channel: true } } },
+    select: { id: true, shortId: true, platform: true, caption: true, meta: true, scheduledAt: true, user: { select: { channel: true } }, socialAccount: { select: { id: true, connection: true, platform: true, externalId: true, channel: true } } },
   });
 
   let published = 0;
@@ -55,6 +58,15 @@ async function rodada(userId: string | undefined, now: Date) {
       await db.scheduledPost.update({ where: { id: post.id }, data: { status: "published", publishedAt: now } });
       if (post.shortId) await db.short.update({ where: { id: post.shortId }, data: { isPublished: true, isScheduled: false } }).catch(() => {});
       published++;
+      continue;
+    }
+    // perdeu o horário (Cortix fechado): publicar atrasado já duplicou post feito à mão; quem decide é o dono
+    const atraso = now.getTime() - post.scheduledAt.getTime();
+    if (atraso > ATRASO_MAX_MS) {
+      const min = Math.round(atraso / 60_000);
+      await db.scheduledPost.updateMany({ where: { id: post.id, status: "scheduled" }, data: { status: "failed", error: `Horário perdido: o Cortix estava fechado e o post venceu há ${min} min. Não foi publicado automaticamente — confira se já saiu por outro caminho e reagende.` } });
+      console.warn(`[publisher] post ${post.id} perdeu o horário (${min} min de atraso), não publicado`);
+      failed++;
       continue;
     }
     // trava o post (evita upload duplicado se duas rodadas se cruzarem, inclusive entre processos)
