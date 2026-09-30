@@ -37,13 +37,27 @@ export async function destroySession() {
 export async function getSessionUserId(): Promise<string | null> {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
-  if (!token) return null;
-  try {
-    const { payload } = await jwtVerify(token, secret());
-    return (payload.sub as string) || null;
-  } catch {
-    return null;
+  if (token) {
+    try {
+      const { payload } = await jwtVerify(token, secret());
+      if (payload.sub) return payload.sub as string;
+    } catch {}
   }
+  return autoLoginUserId();
+}
+
+/**
+ * Instância local sem tela de login (ex.: Cortix do estúdio em 127.0.0.1): CORTIX_AUTO_LOGIN=<usuário ou e-mail>
+ * entra direto nessa conta quando não há sessão. Quem fizer login continua podendo trocar de conta.
+ */
+let autoLoginCache: string | null | undefined;
+async function autoLoginUserId(): Promise<string | null> {
+  const alvo = process.env.CORTIX_AUTO_LOGIN?.trim().toLowerCase();
+  if (!alvo) return null;
+  if (autoLoginCache === undefined) {
+    autoLoginCache = (await db.user.findUnique({ where: { email: alvo }, select: { id: true } }))?.id ?? null;
+  }
+  return autoLoginCache;
 }
 
 export async function getCurrentUser() {
