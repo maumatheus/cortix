@@ -156,6 +156,21 @@ export async function uploadYoutubeVideo(accessToken: string, input: YoutubeUplo
   return { id: j.id, url: `https://youtube.com/shorts/${j.id}`, warning: warnings.length ? warnings.join("; ") : null };
 }
 
+/**
+ * Troca a visibilidade de um vídeo já enviado (videos.update, part=status). Manda o status inteiro:
+ * campo omitido volta pro padrão (embeddable/publicStatsViewable caíam pra false).
+ */
+export async function setYoutubePrivacy(accessToken: string, videoId: string, privacy: "public" | "unlisted" | "private", madeForKids = false) {
+  const res = await fetch(`${GAPI}/youtube/v3/videos?part=status`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ id: videoId, status: { privacyStatus: privacy, selfDeclaredMadeForKids: madeForKids, embeddable: true, publicStatsViewable: true, license: "youtube" } }),
+  });
+  if (!res.ok) throw new Error(await apiError(res));
+  const j = (await res.json()) as { status?: { privacyStatus?: string } };
+  if (j.status?.privacyStatus !== privacy) throw new Error(`o YouTube manteve o vídeo como ${j.status?.privacyStatus ?? "?"}`);
+}
+
 async function apiError(res: Response) {
   const j = (await res.json().catch(() => null)) as { error?: { message?: string; errors?: Array<{ reason?: string }> } } | null;
   const reason = j?.error?.errors?.[0]?.reason;

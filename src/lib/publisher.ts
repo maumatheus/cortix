@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { db } from "./db";
-import { uploadYoutubeVideo, youtubeAccessToken } from "./social/youtube";
+import { setYoutubePrivacy, uploadYoutubeVideo, youtubeAccessToken } from "./social/youtube";
 import { startUploadPhotos, startUploadPost, uploadPostStatus } from "./social/uploadpost";
 import { META_PENDING_PREFIX, metaPendingStatus, publishMetaCarousel, publishMetaVideo } from "./social/meta";
 import { youtubeAudited } from "./social/config";
@@ -199,8 +199,16 @@ async function publishReal(post: {
         playlistId: yt?.playlistId,
       });
       if (audited) return r;
-      const aviso = `${YOUTUBE_PRIVATE_WARNING}: https://studio.youtube.com/video/${r.id}/edit`;
-      return { ...r, warning: [aviso, r.warning].filter(Boolean).join("; ") };
+      // sem auditoria o envio nasce privado, mas a troca de visibilidade logo depois costuma passar (testado em 30/09)
+      const alvo = yt?.privacy ?? "public";
+      if (alvo === "private") return r;
+      try {
+        await setYoutubePrivacy(token, r.id, alvo, yt?.madeForKids ?? false);
+        return r;
+      } catch (e) {
+        const aviso = `${YOUTUBE_PRIVATE_WARNING} (${(e as Error).message}): https://studio.youtube.com/video/${r.id}/edit`;
+        return { ...r, warning: [aviso, r.warning].filter(Boolean).join("; ") };
+      }
     }
     default:
       throw new Error(`Publicação real no ${acc.platform} ainda não está disponível`);
